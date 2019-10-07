@@ -32,33 +32,33 @@ const (
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
 		mcnflag.IntFlag{
-			Name:   "generic-engine-port",
+			Name:   "lightsail-engine-port",
 			Usage:  "Docker engine port",
 			Value:  engine.DefaultPort,
-			EnvVar: "GENERIC_ENGINE_PORT",
+			EnvVar: "LIGHTSAIL_ENGINE_PORT",
 		},
 		mcnflag.StringFlag{
-			Name:   "generic-ip-address",
+			Name:   "lightsail-ip-address",
 			Usage:  "IP Address of machine",
-			EnvVar: "GENERIC_IP_ADDRESS",
+			EnvVar: "LIGHTSAIL_IP_ADDRESS",
 		},
 		mcnflag.StringFlag{
-			Name:   "generic-ssh-user",
+			Name:   "lightsail-ssh-user",
 			Usage:  "SSH user",
 			Value:  drivers.DefaultSSHUser,
-			EnvVar: "GENERIC_SSH_USER",
+			EnvVar: "LIGHTSAIL_SSH_USER",
 		},
 		mcnflag.StringFlag{
-			Name:   "generic-ssh-key",
+			Name:   "lightsail-ssh-key",
 			Usage:  "SSH private key path (if not provided, default SSH key will be used)",
 			Value:  "",
-			EnvVar: "GENERIC_SSH_KEY",
+			EnvVar: "LIGHTSAIL_SSH_KEY",
 		},
 		mcnflag.IntFlag{
-			Name:   "generic-ssh-port",
+			Name:   "lightsail-ssh-port",
 			Usage:  "SSH port",
 			Value:  drivers.DefaultSSHPort,
-			EnvVar: "GENERIC_SSH_PORT",
+			EnvVar: "LIGHTSAIL_SSH_PORT",
 		},
 	}
 }
@@ -92,14 +92,14 @@ func (d *Driver) GetSSHKeyPath() string {
 }
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
-	d.EnginePort = flags.Int("generic-engine-port")
-	d.IPAddress = flags.String("generic-ip-address")
-	d.SSHUser = flags.String("generic-ssh-user")
-	d.SSHKey = flags.String("generic-ssh-key")
-	d.SSHPort = flags.Int("generic-ssh-port")
+	d.EnginePort = flags.Int("lightsail-engine-port")
+	d.IPAddress = flags.String("lightsail-ip-address")
+	d.SSHUser = flags.String("lightsail-ssh-user")
+	d.SSHKey = flags.String("lightsail-ssh-key")
+	d.SSHPort = flags.Int("lightsail-ssh-port")
 
 	if d.IPAddress == "" {
-		return errors.New("generic driver requires the --generic-ip-address option")
+		return errors.New("lightsail driver requires the --lightsail-ip-address option")
 	}
 
 	return nil
@@ -163,11 +163,11 @@ func (d *Driver) GetState() (state.State, error) {
 }
 
 func (d *Driver) Start() error {
-	return errors.New("generic driver does not support start")
+	return errors.New("lightsail driver does not support start")
 }
 
 func (d *Driver) Stop() error {
-	return errors.New("generic driver does not support stop")
+	return errors.New("lightsail driver does not support stop")
 }
 
 func (d *Driver) Restart() error {
@@ -176,7 +176,7 @@ func (d *Driver) Restart() error {
 }
 
 func (d *Driver) Kill() error {
-	return errors.New("generic driver does not support kill")
+	return errors.New("lightsail driver does not support kill")
 }
 
 func (d *Driver) Remove() error {
