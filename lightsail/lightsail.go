@@ -25,6 +25,8 @@ type Driver struct {
 
 const (
 	defaultTimeout = 15 * time.Second
+	DefaultSSHUser = "admin"
+	driverName = "lightsail"
 )
 
 // GetCreateFlags registers the flags this driver adds to
@@ -45,7 +47,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:   "lightsail-ssh-user",
 			Usage:  "SSH user",
-			Value:  drivers.DefaultSSHUser,
+			Value:  DefaultSSHUser,
 			EnvVar: "LIGHTSAIL_SSH_USER",
 		},
 		mcnflag.StringFlag{
@@ -76,7 +78,7 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
-	return "lightsail"
+	return driverName
 }
 
 func (d *Driver) GetSSHHostname() (string, error) {
