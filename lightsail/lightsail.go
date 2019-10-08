@@ -29,7 +29,7 @@ type Driver struct {
 	lightsailSVC    *lightsail.Lightsail
 	EnginePort      int
 	SSHPrivateKey   string
-	KeyPair         string
+	KeyPairName     string
 	AccessKey       string
 	SecretKey       string
 	SessionToken    string
@@ -44,7 +44,7 @@ const (
 	defaultBundleId = "small_2_0"
 )
 var (
-	errorMissingCredentials              = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
+	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
 )
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
@@ -107,10 +107,20 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 		},
 	}
 	driver.awsCredentialsFactory = driver.buildCredentials
+	driver.buildLightsailSVC()
 	return driver
 }
 func (d *Driver) buildCredentials() awsCredentials {
 	return NewAWSCredentials(d.AccessKey, d.SecretKey, d.SessionToken)
+}
+func (d *Driver) buildLightsailSVC() {
+	// Create Session with MaxRetries configuration to be shared by multiple
+	// service clients.
+	sess := session.Must(session.NewSession(aws.NewConfig().
+		WithMaxRetries(3),
+	))
+	// Create lightsail service client with a specific Region.
+	d.lightsailSVC = lightsail.New(sess, aws.NewConfig().WithRegion(defaultRegion))
 }
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
@@ -146,13 +156,6 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	if err != nil {
 		return errorMissingCredentials
 	}
-	// Create Session with MaxRetries configuration to be shared by multiple
-	// service clients.
-	sess := session.Must(session.NewSession(aws.NewConfig().
-		WithMaxRetries(3),
-	))
-	// Create lightsail service client with a specific Region.
-	d.lightsailSVC = lightsail.New(sess, aws.NewConfig().WithRegion(defaultRegion))
 	return nil
 }
 
@@ -180,7 +183,7 @@ func (d *Driver) Create() error {
 	log.Debugf("IP: %s", d.IPAddress)
 	if err := d.innerCreate(); err != nil {
 		// cleanup partially created resources
-		//d.Remove()
+		d.Remove()
 		return err
 	}
 	return nil
@@ -198,13 +201,13 @@ func (d *Driver) importKeyPairToLightsail() error {
 		return err
 	}
 	if  "Succeeded" == *result.Operation.Status {
-		d.KeyPair = *result.Operation.ResourceName
+		d.KeyPairName = *result.Operation.ResourceName
 	}
 	return nil
 }
 func (d *Driver) processSSHKey() error {
 	if d.SSHPrivateKey == "" {
-		d.SSHKeyPath = d.GetSSHKeyPath()
+		d.SSHKeyPath = d.GetSSHKeyPath() + "_" + d.MachineName
 		log.Info("No SSH key specified. Creating new SSH Key")
 		if err := ssh.GenerateSSHKey(d.SSHKeyPath); err != nil {
 			return err
@@ -285,7 +288,7 @@ func (d *Driver) createInstances() error {
 	inputCreate.SetBlueprintId(defaultBlueprintId)
 	inputCreate.SetBundleId(defaultBundleId)
 	inputCreate.SetInstanceNames(instanceNames)
-	inputCreate.SetKeyPairName(d.KeyPair)
+	inputCreate.SetKeyPairName(d.KeyPairName)
 	_, err := d.lightsailSVC.CreateInstances(&inputCreate)
 	return err
 }
@@ -377,5 +380,5 @@ func copySSHPrivateKey(src, dst string) error {
 	return nil
 }
 func (d *Driver) publicSSHKeyPath() string {
-	return d.GetSSHKeyPath() + ".pub"
+	return d.SSHKeyPath + ".pub"
 }
