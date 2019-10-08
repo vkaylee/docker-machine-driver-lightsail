@@ -365,6 +365,14 @@ func (d *Driver) Kill() error {
 }
 
 func (d *Driver) Remove() error {
+	var input lightsail.DeleteInstanceInput
+	input.SetForceDeleteAddOns(true)
+	input.SetInstanceName(d.MachineName)
+	fmt.Println(input)
+	_, err := d.lightsailSVC.DeleteInstance(&input)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
