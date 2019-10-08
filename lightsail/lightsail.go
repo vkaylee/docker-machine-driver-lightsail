@@ -26,14 +26,17 @@ import (
 type Driver struct {
 	*drivers.BaseDriver
 	awsCredentialsFactory func() awsCredentials
-	lightsailSVC    *lightsail.Lightsail
-	EnginePort      int
-	SSHPrivateKey   string
-	KeyPairName     string
-	AccessKey       string
-	SecretKey       string
-	SessionToken    string
-	Region          string
+	lightsailSVC        *lightsail.Lightsail
+	EnginePort          int
+	SSHPrivateKey       string
+	KeyPairName         string
+	AccessKey           string
+	SecretKey           string
+	SessionToken        string
+	Region              string
+	BundleId            string
+	BlueprintId         string
+	AvailabilityZone    string
 }
 const (
 	defaultTimeout = 15 * time.Second
@@ -99,7 +102,25 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "lightsail-region",
 			Usage:  "Lightsail Region",
 			Value:  defaultRegion,
-			EnvVar: "LIGHTSAIL_SSH_PORT",
+			EnvVar: "LIGHTSAIL_REGION",
+		},
+		mcnflag.StringFlag{
+			Name:   "lightsail-availability-zone",
+			Usage:  "Lightsail AvailabilityZone",
+			Value:  defaultAvailabilityZone,
+			EnvVar: "LIGHTSAIL_AVAILABILITY_ZONE",
+		},
+		mcnflag.StringFlag{
+			Name:   "lightsail-blueprint-id",
+			Usage:  "Lightsail BlueprintId",
+			Value:  defaultBlueprintId,
+			EnvVar: "LIGHTSAIL_BLUEPRINT_ID",
+		},
+		mcnflag.StringFlag{
+			Name:   "lightsail-bundle-id",
+			Usage:  "Lightsail BundleId",
+			Value:  defaultBundleId,
+			EnvVar: "LIGHTSAIL_BUNDLE_ID",
 		},
 	}
 }
@@ -155,6 +176,9 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SecretKey = flags.String("lightsail-secret-key")
 	d.SessionToken = flags.String("lightsail-session-token")
 	d.Region = flags.String("lightsail-region")
+	d.AvailabilityZone = flags.String("lightsail-availability-zone")
+	d.BlueprintId = flags.String("lightsail-blueprint-id")
+	d.BundleId = flags.String("lightsail-bundle-id")
 
 	//if d.IPAddress == "" {
 	//	return errors.New("lightsail driver requires the --lightsail-ip-address option")
@@ -303,14 +327,14 @@ func (d *Driver) openPortsInLightsailInstance() error {
 	return err
 }
 func (d *Driver) createInstances() error {
-	availabilityZone := fmt.Sprintf("%s%s", defaultRegion, defaultAvailabilityZone)
+	availabilityZone := fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone)
 	instanceName := d.MachineName
 	var instanceNames []*string
 	instanceNames = append(instanceNames, &instanceName)
 	var inputCreate lightsail.CreateInstancesInput
 	inputCreate.AvailabilityZone = &availabilityZone
-	inputCreate.SetBlueprintId(defaultBlueprintId)
-	inputCreate.SetBundleId(defaultBundleId)
+	inputCreate.SetBlueprintId(d.BlueprintId)
+	inputCreate.SetBundleId(d.BundleId)
 	inputCreate.SetInstanceNames(instanceNames)
 	inputCreate.SetKeyPairName(d.KeyPairName)
 	_, err := d.lightsailSVC.CreateInstances(&inputCreate)
