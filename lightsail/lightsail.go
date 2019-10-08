@@ -356,7 +356,7 @@ func (d *Driver) Stop() error {
 }
 
 func (d *Driver) Restart() error {
-	_, err := drivers.RunSSHCommandFromDriver(d, "sudo shutdown -r now")
+	_, err := drivers.RunSSHCommandFromDriver(d, "sudo reboot")
 	return err
 }
 
@@ -365,10 +365,40 @@ func (d *Driver) Kill() error {
 }
 
 func (d *Driver) Remove() error {
+	// Delete lightsail instance
+	if err := d.deleteLightsailInstance(); err != nil {
+		return err
+	}
+	// Get info of current instance
+	currentInstance, err := d.getLightsailInstanceInfo();
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == "NotFoundException" {
+				return nil
+			}
+		}
+		return err
+	}
+	d.KeyPairName = *currentInstance.Instance.SshKeyName
+	// Remove lightsail keypair
+	if err := d.removeLightsailKeyPair(&d.KeyPairName); err != nil {
+		return err
+	}
+	return nil
+}
+func (d *Driver) removeLightsailKeyPair(name *string) error {
+	var input lightsail.DeleteKeyPairInput
+	input.SetKeyPairName(*name)
+	_, err := d.lightsailSVC.DeleteKeyPair(&input)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (d *Driver) deleteLightsailInstance() error {
 	var input lightsail.DeleteInstanceInput
 	input.SetForceDeleteAddOns(true)
 	input.SetInstanceName(d.MachineName)
-	fmt.Println(input)
 	_, err := d.lightsailSVC.DeleteInstance(&input)
 	if err != nil {
 		return err
