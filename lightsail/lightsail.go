@@ -202,15 +202,25 @@ func (d *Driver) importKeyPairToLightsail() error {
 	var keyPairInput lightsail.GetKeyPairInput
 	keyPairInput.SetKeyPairName(d.KeyPairName)
 	currentKeyPair, err := d.lightsailSVC.GetKeyPair(&keyPairInput)
+	var removeKeyPairBool bool = true
 	if err != nil {
-		return err
-	}
-	if *currentKeyPair.KeyPair.Name == d.KeyPairName && *currentKeyPair.KeyPair.Location.RegionName == d.Region {
-		// Remove lightsail keypair
-		if err := d.removeLightsailKeyPair(&d.KeyPairName); err != nil {
-			return err
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == lightsail.ErrCodeNotFoundException {
+				removeKeyPairBool = false
+			} else {
+				return err
+			}
 		}
 	}
+	if removeKeyPairBool == true {
+		if *currentKeyPair.KeyPair.Name == d.KeyPairName && *currentKeyPair.KeyPair.Location.RegionName == d.Region {
+			// Remove lightsail keypair
+			if err := d.removeLightsailKeyPair(&d.KeyPairName); err != nil {
+				return err
+			}
+		}
+	}
+
 	publicKey, err := ioutil.ReadFile(d.SSHKeyPath + ".pub")
 	if err != nil {
 		return err
