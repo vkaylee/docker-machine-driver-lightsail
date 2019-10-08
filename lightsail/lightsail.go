@@ -7,6 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
+	"github.com/docker/machine/libmachine/ssh"
+	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -24,8 +26,10 @@ import (
 type Driver struct {
 	*drivers.BaseDriver
 	awsCredentialsFactory func() awsCredentials
+	lightsailSVC    *lightsail.Lightsail
 	EnginePort      int
-	SSHKey          string
+	SSHPrivateKey   string
+	KeyPair         string
 	AccessKey       string
 	SecretKey       string
 	SessionToken    string
@@ -38,7 +42,6 @@ const (
 	defaultRegion = "ap-northeast-1"
 	defaultBlueprintId = "debian_9_5"
 	defaultBundleId = "small_2_0"
-	defaultInstanceName = "server"
 )
 var (
 	errorMissingCredentials              = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
@@ -122,7 +125,7 @@ func (d *Driver) GetSSHUsername() string {
 	return d.SSHUser
 }
 
-func (d *Driver) GetSSHKeyPath() string {
+func (d *Driver) GetSSHPrivateKeyPath() string {
 	return d.SSHKeyPath
 }
 
@@ -130,7 +133,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.EnginePort = flags.Int("lightsail-engine-port")
 	d.IPAddress = flags.String("lightsail-ip-address")
 	d.SSHUser = flags.String("lightsail-ssh-user")
-	d.SSHKey = flags.String("lightsail-ssh-key")
+	d.SSHPrivateKey = flags.String("lightsail-ssh-key")
 	d.SSHPort = flags.Int("lightsail-ssh-port")
 	d.AccessKey = flags.String("lightsail-access-key")
 	d.SecretKey = flags.String("lightsail-secret-key")
@@ -143,13 +146,20 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	if err != nil {
 		return errorMissingCredentials
 	}
+	// Create Session with MaxRetries configuration to be shared by multiple
+	// service clients.
+	sess := session.Must(session.NewSession(aws.NewConfig().
+		WithMaxRetries(3),
+	))
+	// Create lightsail service client with a specific Region.
+	d.lightsailSVC = lightsail.New(sess, aws.NewConfig().WithRegion(defaultRegion))
 	return nil
 }
 
 func (d *Driver) PreCreateCheck() error {
-	if d.SSHKey != "" {
-		if _, err := os.Stat(d.SSHKey); os.IsNotExist(err) {
-			return fmt.Errorf("SSH key does not exist: %q", d.SSHKey)
+	if d.SSHPrivateKey != "" {
+		if _, err := os.Stat(d.SSHPrivateKey); os.IsNotExist(err) {
+			return fmt.Errorf("SSH key does not exist: %q", d.SSHPrivateKey)
 		}
 
 		// TODO: validate the key is a valid key
@@ -159,21 +169,14 @@ func (d *Driver) PreCreateCheck() error {
 }
 
 func (d *Driver) Create() error {
-	if d.SSHKey == "" {
-		log.Info("No SSH key specified. Assuming an existing key at the default location.")
-	} else {
-		log.Info("Importing SSH key...")
-
-		d.SSHKeyPath = d.ResolveStorePath(path.Base(d.SSHKey))
-		if err := copySSHKey(d.SSHKey, d.SSHKeyPath); err != nil {
-			return err
-		}
-
-		if err := copySSHKey(d.SSHKey+".pub", d.SSHKeyPath+".pub"); err != nil {
-			log.Infof("Couldn't copy SSH public key : %s", err)
-		}
+	// Process SSH Key first
+	if err := d.processSSHKey(); err != nil {
+		return err
 	}
-
+	// Import key pair to lightsail
+	if err := d.importKeyPairToLightsail(); err != nil {
+		return err
+	}
 	log.Debugf("IP: %s", d.IPAddress)
 	if err := d.innerCreate(); err != nil {
 		// cleanup partially created resources
@@ -182,22 +185,52 @@ func (d *Driver) Create() error {
 	}
 	return nil
 }
+func (d *Driver) importKeyPairToLightsail() error {
+	publicKey, err := ioutil.ReadFile(d.SSHKeyPath + ".pub")
+	if err != nil {
+		return err
+	}
+	var input lightsail.ImportKeyPairInput
+	input.SetKeyPairName("docker_machine_" + d.MachineName)
+	input.SetPublicKeyBase64(string(publicKey))
+	result, err := d.lightsailSVC.ImportKeyPair(&input)
+	if err != nil {
+		return err
+	}
+	if  "Succeeded" == *result.Operation.Status {
+		d.KeyPair = *result.Operation.ResourceName
+	}
+	return nil
+}
+func (d *Driver) processSSHKey() error {
+	if d.SSHPrivateKey == "" {
+		d.SSHKeyPath = d.GetSSHKeyPath()
+		log.Info("No SSH key specified. Creating new SSH Key")
+		if err := ssh.GenerateSSHKey(d.SSHKeyPath); err != nil {
+			return err
+		}
+	} else {
+		log.Info("Importing SSH key in argv to system key...")
+		d.SSHKeyPath = d.ResolveStorePath(path.Base(d.SSHPrivateKey))
+		if err := copySSHPrivateKey(d.SSHPrivateKey, d.SSHKeyPath); err != nil {
+			return err
+		}
+		if err := copySSHPrivateKey(d.SSHPrivateKey+".pub", d.SSHKeyPath+".pub"); err != nil {
+			log.Infof("Couldn't copy SSH public key : %s", err)
+			return err
+		}
+	}
+	return nil
+}
 func (d *Driver) innerCreate() error {
 	log.Infof("Launching instance...")
-	// Create Session with MaxRetries configuration to be shared by multiple
-	// service clients.
-	sess := session.Must(session.NewSession(aws.NewConfig().
-		WithMaxRetries(3),
-	))
-	// Create lightsail service client with a specific Region.
-	svc := lightsail.New(sess, aws.NewConfig().WithRegion(defaultRegion))
 	// Create lightsail instance
-	if err := d.createInstances(svc);err != nil {
+	if err := d.createInstances();err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			switch awsErr.Code() {
 			case lightsail.ErrCodeInvalidInputException:
 				fmt.Println("The instance existed!")
-				if err := d.getInstance(svc);err != nil {
+				if _, err := d.getLightsailInstanceInfo();err != nil {
 					return err
 				}
 				return nil
@@ -205,12 +238,44 @@ func (d *Driver) innerCreate() error {
 		}
 		return err
 	}
-	if err := d.getInstance(svc); err != nil {
+	// Wait for the instance has a status "running"
+	if err := d.waitForLightsailInstance(); err != nil {
+		return err
+	}
+	// Get the info of instance
+	result, err := d.getLightsailInstanceInfo()
+	if err != nil {
+		return err
+	}
+	// Set SSHUser
+	d.SSHUser = *result.Instance.Username
+	// Set IPAddress
+	d.IPAddress = *result.Instance.PublicIpAddress
+	//fmt.Println(*result.Instance.Name)
+	//fmt.Println(*result.Instance.PrivateIpAddress)
+	//fmt.Println(*result.Instance.SshKeyName)
+
+	// Open ports in lightsail instance
+	if err := d.openPortsInLightsailInstance(); err != nil {
 		return err
 	}
 	return nil
 }
-func (d *Driver) createInstances(lightsailSess *lightsail.Lightsail) error {
+func (d *Driver) openPortsInLightsailInstance() error {
+	var openInstancePublicPorts lightsail.OpenInstancePublicPortsInput
+	openInstancePublicPorts.SetInstanceName(d.MachineName)
+	var fromPort int64 = 2376
+	var toPort int64 = 2376
+	var portInfo lightsail.PortInfo
+	portInfo.SetFromPort(fromPort)
+	portInfo.SetToPort(toPort)
+	protocol := "tcp" // tcp, udp, all
+	portInfo.SetProtocol(protocol)
+	openInstancePublicPorts.SetPortInfo(&portInfo)
+	_, err := d.lightsailSVC.OpenInstancePublicPorts(&openInstancePublicPorts)
+	return err
+}
+func (d *Driver) createInstances() error {
 	availabilityZone := fmt.Sprintf("%s%s", defaultRegion, defaultAvailabilityZone)
 	instanceName := d.MachineName
 	var instanceNames []*string
@@ -220,54 +285,62 @@ func (d *Driver) createInstances(lightsailSess *lightsail.Lightsail) error {
 	inputCreate.SetBlueprintId(defaultBlueprintId)
 	inputCreate.SetBundleId(defaultBundleId)
 	inputCreate.SetInstanceNames(instanceNames)
-	_, err := lightsailSess.CreateInstances(&inputCreate)
+	inputCreate.SetKeyPairName(d.KeyPair)
+	_, err := d.lightsailSVC.CreateInstances(&inputCreate)
 	return err
 }
-//func (d *Driver) instanceIsRunning() bool {
-//	st, err := d.GetState()
-//	if err != nil {
-//		log.Debug(err)
-//	}
-//	if st == state.Running {
-//		return true
-//	}
-//	return false
-//}
-//func (d *Driver) waitForInstance() error {
-//	if err := mcnutils.WaitFor(d.instanceIsRunning); err != nil {
-//		return err
-//	}
-//	return nil
-//}
-func (d *Driver) getInstance(lightsailSess *lightsail.Lightsail) error {
+func (d *Driver) checkLightsailInstanceIsRunning() bool {
+	// Call AWS SDK
+	result, err := d.getInstanceState()
+	if err != nil {
+		log.Debug(err)
+		return false
+	}
+	fmt.Println("The instance is " + *result.State.Name)
+	// the instance is running if the state code == 16
+	if *result.State.Code == 16 {
+		return true
+	}
+	return false
+}
+func (d *Driver) waitForLightsailInstance() error {
+	fmt.Println("Check lightsail instance")
+	if err := mcnutils.WaitFor(d.checkLightsailInstanceIsRunning); err != nil {
+		return err
+	}
+	return nil
+}
+func (d *Driver) getInstanceState() (*lightsail.GetInstanceStateOutput, error) {
+	instanceName := d.MachineName
+	var instanceInput lightsail.GetInstanceStateInput
+	instanceInput.SetInstanceName(instanceName)
+	result, err := d.lightsailSVC.GetInstanceState(&instanceInput)
+	return result, err
+}
+func (d *Driver) getLightsailInstanceInfo() (*lightsail.GetInstanceOutput, error) {
 	instanceName := d.MachineName
 	var instanceInput lightsail.GetInstanceInput
 	instanceInput.SetInstanceName(instanceName)
-	result, err := lightsailSess.GetInstance(&instanceInput)
-	fmt.Println(result)
-	return err
+	result, err := d.lightsailSVC.GetInstance(&instanceInput)
+	return result, err
 }
 func (d *Driver) GetURL() (string, error) {
 	if err := drivers.MustBeRunning(d); err != nil {
 		return "", err
 	}
-
 	ip, err := d.GetIP()
 	if err != nil {
 		return "", err
 	}
-
 	return fmt.Sprintf("tcp://%s", net.JoinHostPort(ip, strconv.Itoa(d.EnginePort))), nil
 }
 
 func (d *Driver) GetState() (state.State, error) {
 	address := net.JoinHostPort(d.IPAddress, strconv.Itoa(d.SSHPort))
-
 	_, err := net.DialTimeout("tcp", address, defaultTimeout)
 	if err != nil {
 		return state.Stopped, nil
 	}
-
 	return state.Running, nil
 }
 
@@ -292,7 +365,7 @@ func (d *Driver) Remove() error {
 	return nil
 }
 
-func copySSHKey(src, dst string) error {
+func copySSHPrivateKey(src, dst string) error {
 	if err := mcnutils.CopyFile(src, dst); err != nil {
 		return fmt.Errorf("unable to copy ssh key: %s", err)
 	}
@@ -302,4 +375,7 @@ func copySSHKey(src, dst string) error {
 	}
 
 	return nil
+}
+func (d *Driver) publicSSHKeyPath() string {
+	return d.GetSSHKeyPath() + ".pub"
 }
