@@ -365,10 +365,6 @@ func (d *Driver) Kill() error {
 }
 
 func (d *Driver) Remove() error {
-	// Delete lightsail instance
-	if err := d.deleteLightsailInstance(); err != nil {
-		return err
-	}
 	// Get info of current instance
 	currentInstance, err := d.getLightsailInstanceInfo();
 	if err != nil {
@@ -377,6 +373,10 @@ func (d *Driver) Remove() error {
 				return nil
 			}
 		}
+		return err
+	}
+	// Delete lightsail instance
+	if err := d.deleteLightsailInstance(); err != nil {
 		return err
 	}
 	d.KeyPairName = *currentInstance.Instance.SshKeyName
