@@ -323,7 +323,6 @@ func (d *Driver) checkLightsailInstanceIsRunning() bool {
 		log.Debug(err)
 		return false
 	}
-	fmt.Println("The instance is " + *result.State.Name)
 	// the instance is running if the state code == 16
 	if *result.State.Code == 16 {
 		return true
