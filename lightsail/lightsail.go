@@ -33,6 +33,7 @@ type Driver struct {
 	AccessKey       string
 	SecretKey       string
 	SessionToken    string
+	Region          string
 }
 const (
 	defaultTimeout = 15 * time.Second
@@ -94,9 +95,14 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  drivers.DefaultSSHPort,
 			EnvVar: "LIGHTSAIL_SSH_PORT",
 		},
+		mcnflag.StringFlag{
+			Name:   "lightsail-region",
+			Usage:  "Lightsail Region",
+			Value:  defaultRegion,
+			EnvVar: "LIGHTSAIL_SSH_PORT",
+		},
 	}
 }
-
 // NewDriver creates and returns a new instance of the driver
 func NewDriver(hostName, storePath string) drivers.Driver {
 	driver := &Driver{
@@ -148,6 +154,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.AccessKey = flags.String("lightsail-access-key")
 	d.SecretKey = flags.String("lightsail-secret-key")
 	d.SessionToken = flags.String("lightsail-session-token")
+	d.Region = flags.String("lightsail-region")
 
 	//if d.IPAddress == "" {
 	//	return errors.New("lightsail driver requires the --lightsail-ip-address option")
@@ -189,19 +196,30 @@ func (d *Driver) Create() error {
 	return nil
 }
 func (d *Driver) importKeyPairToLightsail() error {
+	// Set KeyPairName
+	d.KeyPairName = "docker_machine_" + d.MachineName
+	// Check KeyPairName in lightsail
+	var keyPairInput lightsail.GetKeyPairInput
+	keyPairInput.SetKeyPairName(d.KeyPairName)
+	currentKeyPair, err := d.lightsailSVC.GetKeyPair(&keyPairInput)
+	if err != nil {
+		return err
+	}
+	if *currentKeyPair.KeyPair.Name == d.KeyPairName && *currentKeyPair.KeyPair.Location.RegionName == d.Region {
+		// Remove lightsail keypair
+		if err := d.removeLightsailKeyPair(&d.KeyPairName); err != nil {
+			return err
+		}
+	}
 	publicKey, err := ioutil.ReadFile(d.SSHKeyPath + ".pub")
 	if err != nil {
 		return err
 	}
 	var input lightsail.ImportKeyPairInput
-	input.SetKeyPairName("docker_machine_" + d.MachineName)
+	input.SetKeyPairName(d.KeyPairName)
 	input.SetPublicKeyBase64(string(publicKey))
-	result, err := d.lightsailSVC.ImportKeyPair(&input)
-	if err != nil {
+	if _, err := d.lightsailSVC.ImportKeyPair(&input);err != nil {
 		return err
-	}
-	if  "Succeeded" == *result.Operation.Status {
-		d.KeyPairName = *result.Operation.ResourceName
 	}
 	return nil
 }
