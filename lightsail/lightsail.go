@@ -3,6 +3,10 @@ package lightsail
 import (
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/lightsail"
 	"net"
 	"os"
 	"path"
@@ -19,20 +23,45 @@ import (
 
 type Driver struct {
 	*drivers.BaseDriver
-	EnginePort int
-	SSHKey     string
+	awsCredentialsFactory func() awsCredentials
+	EnginePort      int
+	SSHKey          string
+	AccessKey       string
+	SecretKey       string
+	SessionToken    string
 }
-
 const (
 	defaultTimeout = 15 * time.Second
-	DefaultSSHUser = "admin"
+	defaultSSHUser = "admin"
 	driverName = "lightsail"
+	defaultAvailabilityZone = "a"
+	defaultRegion = "ap-northeast-1"
+	defaultBlueprintId = "debian_9_5"
+	defaultBundleId = "small_2_0"
+	defaultInstanceName = "server"
 )
-
+var (
+	errorMissingCredentials              = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
+)
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
+		mcnflag.StringFlag{
+			Name:   "lightsail-access-key",
+			Usage:  "AWS Access Key",
+			EnvVar: "AWS_ACCESS_KEY_ID",
+		},
+		mcnflag.StringFlag{
+			Name:   "lightsail-secret-key",
+			Usage:  "AWS Secret Key",
+			EnvVar: "AWS_SECRET_ACCESS_KEY",
+		},
+		mcnflag.StringFlag{
+			Name:   "lightsail-session-token",
+			Usage:  "AWS Session Token",
+			EnvVar: "AWS_SESSION_TOKEN",
+		},
 		mcnflag.IntFlag{
 			Name:   "lightsail-engine-port",
 			Usage:  "Docker engine port",
@@ -47,7 +76,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:   "lightsail-ssh-user",
 			Usage:  "SSH user",
-			Value:  DefaultSSHUser,
+			Value:  defaultSSHUser,
 			EnvVar: "LIGHTSAIL_SSH_USER",
 		},
 		mcnflag.StringFlag{
@@ -67,15 +96,19 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 
 // NewDriver creates and returns a new instance of the driver
 func NewDriver(hostName, storePath string) drivers.Driver {
-	return &Driver{
+	driver := &Driver{
 		EnginePort: engine.DefaultPort,
 		BaseDriver: &drivers.BaseDriver{
 			MachineName: hostName,
 			StorePath:   storePath,
 		},
 	}
+	driver.awsCredentialsFactory = driver.buildCredentials
+	return driver
 }
-
+func (d *Driver) buildCredentials() awsCredentials {
+	return NewAWSCredentials(d.AccessKey, d.SecretKey, d.SessionToken)
+}
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
 	return driverName
@@ -99,11 +132,17 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHUser = flags.String("lightsail-ssh-user")
 	d.SSHKey = flags.String("lightsail-ssh-key")
 	d.SSHPort = flags.Int("lightsail-ssh-port")
+	d.AccessKey = flags.String("lightsail-access-key")
+	d.SecretKey = flags.String("lightsail-secret-key")
+	d.SessionToken = flags.String("lightsail-session-token")
 
-	if d.IPAddress == "" {
-		return errors.New("lightsail driver requires the --lightsail-ip-address option")
+	//if d.IPAddress == "" {
+	//	return errors.New("lightsail driver requires the --lightsail-ip-address option")
+	//}
+	_, err := d.awsCredentialsFactory().Credentials().Get()
+	if err != nil {
+		return errorMissingCredentials
 	}
-
 	return nil
 }
 
@@ -136,10 +175,78 @@ func (d *Driver) Create() error {
 	}
 
 	log.Debugf("IP: %s", d.IPAddress)
-
+	if err := d.innerCreate(); err != nil {
+		// cleanup partially created resources
+		//d.Remove()
+		return err
+	}
 	return nil
 }
-
+func (d *Driver) innerCreate() error {
+	log.Infof("Launching instance...")
+	// Create Session with MaxRetries configuration to be shared by multiple
+	// service clients.
+	sess := session.Must(session.NewSession(aws.NewConfig().
+		WithMaxRetries(3),
+	))
+	// Create lightsail service client with a specific Region.
+	svc := lightsail.New(sess, aws.NewConfig().WithRegion(defaultRegion))
+	// Create lightsail instance
+	if err := d.createInstances(svc);err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			switch awsErr.Code() {
+			case lightsail.ErrCodeInvalidInputException:
+				fmt.Println("The instance existed!")
+				if err := d.getInstance(svc);err != nil {
+					return err
+				}
+				return nil
+			}
+		}
+		return err
+	}
+	if err := d.getInstance(svc); err != nil {
+		return err
+	}
+	return nil
+}
+func (d *Driver) createInstances(lightsailSess *lightsail.Lightsail) error {
+	availabilityZone := fmt.Sprintf("%s%s", defaultRegion, defaultAvailabilityZone)
+	instanceName := d.MachineName
+	var instanceNames []*string
+	instanceNames = append(instanceNames, &instanceName)
+	var inputCreate lightsail.CreateInstancesInput
+	inputCreate.AvailabilityZone = &availabilityZone
+	inputCreate.SetBlueprintId(defaultBlueprintId)
+	inputCreate.SetBundleId(defaultBundleId)
+	inputCreate.SetInstanceNames(instanceNames)
+	_, err := lightsailSess.CreateInstances(&inputCreate)
+	return err
+}
+//func (d *Driver) instanceIsRunning() bool {
+//	st, err := d.GetState()
+//	if err != nil {
+//		log.Debug(err)
+//	}
+//	if st == state.Running {
+//		return true
+//	}
+//	return false
+//}
+//func (d *Driver) waitForInstance() error {
+//	if err := mcnutils.WaitFor(d.instanceIsRunning); err != nil {
+//		return err
+//	}
+//	return nil
+//}
+func (d *Driver) getInstance(lightsailSess *lightsail.Lightsail) error {
+	instanceName := d.MachineName
+	var instanceInput lightsail.GetInstanceInput
+	instanceInput.SetInstanceName(instanceName)
+	result, err := lightsailSess.GetInstance(&instanceInput)
+	fmt.Println(result)
+	return err
+}
 func (d *Driver) GetURL() (string, error) {
 	if err := drivers.MustBeRunning(d); err != nil {
 		return "", err
