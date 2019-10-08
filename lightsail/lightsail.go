@@ -392,7 +392,7 @@ func (d *Driver) Remove() error {
 	currentInstance, err := d.getLightsailInstanceInfo();
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() == "NotFoundException" {
+			if awsErr.Code() == lightsail.ErrCodeNotFoundException {
 				return nil
 			}
 		}
