@@ -254,10 +254,6 @@ func (d *Driver) innerCreate() error {
 	d.SSHUser = *result.Instance.Username
 	// Set IPAddress
 	d.IPAddress = *result.Instance.PublicIpAddress
-	//fmt.Println(*result.Instance.Name)
-	//fmt.Println(*result.Instance.PrivateIpAddress)
-	//fmt.Println(*result.Instance.SshKeyName)
-
 	// Open ports in lightsail instance
 	if err := d.openPortsInLightsailInstance(); err != nil {
 		return err
