@@ -38,9 +38,6 @@ type Driver struct {
 	BlueprintId         string
 	AvailabilityZone    string
 }
-type clientFactory interface {
-	build(d *Driver) *lightsail.Lightsail
-}
 const (
 	defaultTimeout = 15 * time.Second
 	defaultSSHUser = "admin"
