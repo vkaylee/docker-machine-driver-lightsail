@@ -39,13 +39,13 @@ type Driver struct {
 	AvailabilityZone    string
 }
 const (
-	defaultTimeout = 15 * time.Second
-	defaultSSHUser = "admin"
-	driverName = "lightsail"
-	defaultAvailabilityZone = "a"
-	defaultRegion = "ap-northeast-1"
-	defaultBlueprintId = "debian_9_5"
-	defaultBundleId = "small_2_0"
+	defaultTimeout              =   15 * time.Second
+	defaultSSHUser              =   "admin"
+	driverName                  =   "lightsail"
+	defaultAvailabilityZone     =   "a"
+	defaultRegion               =   "ap-northeast-1"
+	defaultBlueprintId          =   "debian_9_5"
+	defaultBundleId             =   "small_2_0"
 )
 var (
 	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
@@ -141,7 +141,6 @@ func (d *Driver) buildClient() *lightsail.Lightsail {
 	config := aws.NewConfig()
 	config = config.WithRegion(d.Region)
 	config = config.WithCredentials(d.awsCredentialsFactory().Credentials())
-	config = config.WithLogLevel(aws.LogDebugWithHTTPBody)
 	config = config.WithMaxRetries(3)
 	return lightsail.New(session.Must(session.NewSession(config)))
 }
@@ -280,7 +279,6 @@ func (d *Driver) processSSHKey() error {
 	return nil
 }
 func (d *Driver) innerCreate() error {
-	log.Infof("Launching instance...")
 	// Create lightsail instance
 	if err := d.createInstances();err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
@@ -315,6 +313,7 @@ func (d *Driver) innerCreate() error {
 	return nil
 }
 func (d *Driver) openPortsInLightsailInstance() error {
+	log.Infof("Opening port in lightsail instance...")
 	var openInstancePublicPorts lightsail.OpenInstancePublicPortsInput
 	openInstancePublicPorts.SetInstanceName(d.MachineName)
 	var fromPort int64 = 2376
@@ -329,6 +328,7 @@ func (d *Driver) openPortsInLightsailInstance() error {
 	return err
 }
 func (d *Driver) createInstances() error {
+	log.Infof("Launching lightsail instances...")
 	availabilityZone := fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone)
 	instanceName := d.MachineName
 	var instanceNames []*string
@@ -356,7 +356,6 @@ func (d *Driver) checkLightsailInstanceIsRunning() bool {
 	return false
 }
 func (d *Driver) waitForLightsailInstance() error {
-	fmt.Println("Check lightsail instance")
 	if err := mcnutils.WaitFor(d.checkLightsailInstanceIsRunning); err != nil {
 		return err
 	}
@@ -370,6 +369,7 @@ func (d *Driver) getInstanceState() (*lightsail.GetInstanceStateOutput, error) {
 	return result, err
 }
 func (d *Driver) getLightsailInstanceInfo() (*lightsail.GetInstanceOutput, error) {
+	log.Infof("Getting the info of lightsail instance...")
 	instanceName := d.MachineName
 	var instanceInput lightsail.GetInstanceInput
 	instanceInput.SetInstanceName(instanceName)
@@ -440,6 +440,7 @@ func (d *Driver) removeLightsailKeyPair(name *string) error {
 	input.SetKeyPairName(*name)
 	_, err := d.getClient().DeleteKeyPair(&input)
 	if err != nil {
+		log.Infof("We got an error when deleting the lightsail key pair.")
 		return err
 	}
 	return nil
@@ -450,6 +451,7 @@ func (d *Driver) deleteLightsailInstance() error {
 	input.SetInstanceName(d.MachineName)
 	_, err := d.getClient().DeleteInstance(&input)
 	if err != nil {
+		log.Infof("We got an error when deleting the lightsail instance.")
 		return err
 	}
 	return nil
