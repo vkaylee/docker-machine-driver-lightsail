@@ -25,8 +25,8 @@ import (
 
 type Driver struct {
 	*drivers.BaseDriver
+	clientFactory         func() *lightsail.Lightsail
 	awsCredentialsFactory func() awsCredentials
-	lightsailSVC        *lightsail.Lightsail
 	EnginePort          int
 	SSHPrivateKey       string
 	KeyPairName         string
@@ -37,6 +37,9 @@ type Driver struct {
 	BundleId            string
 	BlueprintId         string
 	AvailabilityZone    string
+}
+type clientFactory interface {
+	build(d *Driver) *lightsail.Lightsail
 }
 const (
 	defaultTimeout = 15 * time.Second
@@ -133,21 +136,23 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 			StorePath:   storePath,
 		},
 	}
+	driver.clientFactory = driver.buildClient
 	driver.awsCredentialsFactory = driver.buildCredentials
-	driver.buildLightsailSVC()
 	return driver
+}
+func (d *Driver) buildClient() *lightsail.Lightsail {
+	config := aws.NewConfig()
+	config = config.WithRegion(d.Region)
+	config = config.WithCredentials(d.awsCredentialsFactory().Credentials())
+	config = config.WithLogLevel(aws.LogDebugWithHTTPBody)
+	config = config.WithMaxRetries(3)
+	return lightsail.New(session.Must(session.NewSession(config)))
 }
 func (d *Driver) buildCredentials() awsCredentials {
 	return NewAWSCredentials(d.AccessKey, d.SecretKey, d.SessionToken)
 }
-func (d *Driver) buildLightsailSVC() {
-	// Create Session with MaxRetries configuration to be shared by multiple
-	// service clients.
-	sess := session.Must(session.NewSession(aws.NewConfig().
-		WithMaxRetries(3),
-	))
-	// Create lightsail service client with a specific Region.
-	d.lightsailSVC = lightsail.New(sess, aws.NewConfig().WithRegion(defaultRegion))
+func (d *Driver) getClient() *lightsail.Lightsail {
+	return d.clientFactory()
 }
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
@@ -225,7 +230,7 @@ func (d *Driver) importKeyPairToLightsail() error {
 	// Check KeyPairName in lightsail
 	var keyPairInput lightsail.GetKeyPairInput
 	keyPairInput.SetKeyPairName(d.KeyPairName)
-	currentKeyPair, err := d.lightsailSVC.GetKeyPair(&keyPairInput)
+	currentKeyPair, err := d.getClient().GetKeyPair(&keyPairInput)
 	var removeKeyPairBool bool = true
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
@@ -252,7 +257,7 @@ func (d *Driver) importKeyPairToLightsail() error {
 	var input lightsail.ImportKeyPairInput
 	input.SetKeyPairName(d.KeyPairName)
 	input.SetPublicKeyBase64(string(publicKey))
-	if _, err := d.lightsailSVC.ImportKeyPair(&input);err != nil {
+	if _, err := d.getClient().ImportKeyPair(&input);err != nil {
 		return err
 	}
 	return nil
@@ -323,7 +328,7 @@ func (d *Driver) openPortsInLightsailInstance() error {
 	protocol := "tcp" // tcp, udp, all
 	portInfo.SetProtocol(protocol)
 	openInstancePublicPorts.SetPortInfo(&portInfo)
-	_, err := d.lightsailSVC.OpenInstancePublicPorts(&openInstancePublicPorts)
+	_, err := d.getClient().OpenInstancePublicPorts(&openInstancePublicPorts)
 	return err
 }
 func (d *Driver) createInstances() error {
@@ -337,7 +342,7 @@ func (d *Driver) createInstances() error {
 	inputCreate.SetBundleId(d.BundleId)
 	inputCreate.SetInstanceNames(instanceNames)
 	inputCreate.SetKeyPairName(d.KeyPairName)
-	_, err := d.lightsailSVC.CreateInstances(&inputCreate)
+	_, err := d.getClient().CreateInstances(&inputCreate)
 	return err
 }
 func (d *Driver) checkLightsailInstanceIsRunning() bool {
@@ -364,14 +369,14 @@ func (d *Driver) getInstanceState() (*lightsail.GetInstanceStateOutput, error) {
 	instanceName := d.MachineName
 	var instanceInput lightsail.GetInstanceStateInput
 	instanceInput.SetInstanceName(instanceName)
-	result, err := d.lightsailSVC.GetInstanceState(&instanceInput)
+	result, err := d.getClient().GetInstanceState(&instanceInput)
 	return result, err
 }
 func (d *Driver) getLightsailInstanceInfo() (*lightsail.GetInstanceOutput, error) {
 	instanceName := d.MachineName
 	var instanceInput lightsail.GetInstanceInput
 	instanceInput.SetInstanceName(instanceName)
-	result, err := d.lightsailSVC.GetInstance(&instanceInput)
+	result, err := d.getClient().GetInstance(&instanceInput)
 	return result, err
 }
 func (d *Driver) GetURL() (string, error) {
@@ -436,7 +441,7 @@ func (d *Driver) Remove() error {
 func (d *Driver) removeLightsailKeyPair(name *string) error {
 	var input lightsail.DeleteKeyPairInput
 	input.SetKeyPairName(*name)
-	_, err := d.lightsailSVC.DeleteKeyPair(&input)
+	_, err := d.getClient().DeleteKeyPair(&input)
 	if err != nil {
 		return err
 	}
@@ -446,7 +451,7 @@ func (d *Driver) deleteLightsailInstance() error {
 	var input lightsail.DeleteInstanceInput
 	input.SetForceDeleteAddOns(true)
 	input.SetInstanceName(d.MachineName)
-	_, err := d.lightsailSVC.DeleteInstance(&input)
+	_, err := d.getClient().DeleteInstance(&input)
 	if err != nil {
 		return err
 	}
