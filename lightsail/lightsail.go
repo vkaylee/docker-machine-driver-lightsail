@@ -52,6 +52,7 @@ var (
 	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
 	errorZoneNameUnavailable = errors.New("Current zone is not available, please choose an another zone ")
 	errorBundleIdIsUnavailable = errors.New("Your bundleId is unactive or wrong, please check the --lightsail-bundle-id")
+	errorBlueprintIsUnavailable = errors.New("Your blueprintId is unactive or wrong, please check the --lightsail-blueprint-id")
 )
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
@@ -206,7 +207,20 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	if bundleIdPass == false {
 		return errorBundleIdIsUnavailable
 	}
-	fmt.Println(bundlesOutput)
+	// Check the valid of lightsail-blueprint-id
+	blueprintsOutput, err := d.getClient().GetBlueprints(&lightsail.GetBlueprintsInput{})
+	if err != nil {
+		return err
+	}
+	var blueprintPass bool = false
+	for _, v := range blueprintsOutput.Blueprints {
+		if d.BlueprintId == *v.BlueprintId && true == *v.IsActive {
+			blueprintPass = true
+		}
+	}
+	if blueprintPass == false {
+		return errorBlueprintIsUnavailable
+	}
 	return nil
 }
 
