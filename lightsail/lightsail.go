@@ -434,7 +434,9 @@ func (d *Driver) Stop() error {
 }
 
 func (d *Driver) Restart() error {
-	_, err := drivers.RunSSHCommandFromDriver(d, "sudo reboot")
+	var rebootInstanceInput lightsail.RebootInstanceInput
+	rebootInstanceInput.SetInstanceName(d.MachineName)
+	_, err := d.getClient().RebootInstance(&rebootInstanceInput)
 	return err
 }
 
