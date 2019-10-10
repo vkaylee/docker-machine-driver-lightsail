@@ -197,10 +197,8 @@ func (d *Driver) PreCreateCheck() error {
 		if _, err := os.Stat(d.SSHPrivateKey); os.IsNotExist(err) {
 			return fmt.Errorf("SSH key does not exist: %q", d.SSHPrivateKey)
 		}
-
 		// TODO: validate the key is a valid key
 	}
-
 	return nil
 }
 
