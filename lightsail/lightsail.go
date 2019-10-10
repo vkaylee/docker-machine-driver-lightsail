@@ -426,11 +426,17 @@ func (d *Driver) GetState() (state.State, error) {
 }
 
 func (d *Driver) Start() error {
-	return errors.New("lightsail driver does not support start")
+	var startInstanceInput lightsail.StartInstanceInput
+	startInstanceInput.SetInstanceName(d.MachineName)
+	_, err := d.getClient().StartInstance(&startInstanceInput)
+	return err
 }
 
 func (d *Driver) Stop() error {
-	return errors.New("lightsail driver does not support stop")
+	var stopInstanceInput lightsail.StopInstanceInput
+	stopInstanceInput.SetInstanceName(d.MachineName)
+	_, err := d.getClient().StopInstance(&stopInstanceInput)
+	return err
 }
 
 func (d *Driver) Restart() error {
