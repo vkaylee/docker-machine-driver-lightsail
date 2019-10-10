@@ -40,7 +40,6 @@ type Driver struct {
 }
 const (
 	defaultTimeout              =   15 * time.Second
-	defaultSSHUser              =   "admin"
 	driverName                  =   "lightsail"
 	defaultAvailabilityZone     =   "a"
 	defaultRegion               =   "ap-northeast-1"
@@ -75,17 +74,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "Docker engine port",
 			Value:  engine.DefaultPort,
 			EnvVar: "LIGHTSAIL_ENGINE_PORT",
-		},
-		mcnflag.StringFlag{
-			Name:   "lightsail-ip-address",
-			Usage:  "IP Address of machine",
-			EnvVar: "LIGHTSAIL_IP_ADDRESS",
-		},
-		mcnflag.StringFlag{
-			Name:   "lightsail-ssh-user",
-			Usage:  "SSH user",
-			Value:  defaultSSHUser,
-			EnvVar: "LIGHTSAIL_SSH_USER",
 		},
 		mcnflag.StringFlag{
 			Name:   "lightsail-ssh-key",
@@ -170,8 +158,6 @@ func (d *Driver) GetSSHPrivateKeyPath() string {
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.EnginePort = flags.Int("lightsail-engine-port")
-	d.IPAddress = flags.String("lightsail-ip-address")
-	d.SSHUser = flags.String("lightsail-ssh-user")
 	d.SSHPrivateKey = flags.String("lightsail-ssh-key")
 	d.SSHPort = flags.Int("lightsail-ssh-port")
 	d.AccessKey = flags.String("lightsail-access-key")
@@ -182,9 +168,6 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.BlueprintId = flags.String("lightsail-blueprint-id")
 	d.BundleId = flags.String("lightsail-bundle-id")
 
-	//if d.IPAddress == "" {
-	//	return errors.New("lightsail driver requires the --lightsail-ip-address option")
-	//}
 	if _, err := d.awsCredentialsFactory().Credentials().Get();err != nil {
 		return errorMissingCredentials
 	}
@@ -231,7 +214,7 @@ func (d *Driver) Create() error {
 		return err
 	}
 	log.Debugf("IP: %s", d.IPAddress)
-	if err := d.innerCreate(); err != nil {
+	if err := d.innerCreate();err != nil {
 		// cleanup partially created resources
 		d.Remove()
 		return err
