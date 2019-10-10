@@ -429,7 +429,10 @@ func (d *Driver) Start() error {
 	var startInstanceInput lightsail.StartInstanceInput
 	startInstanceInput.SetInstanceName(d.MachineName)
 	_, err := d.getClient().StartInstance(&startInstanceInput)
-	return err
+	if err != nil {
+		return err
+	}
+	return d.waitForLightsailInstance()
 }
 
 func (d *Driver) Stop() error {
