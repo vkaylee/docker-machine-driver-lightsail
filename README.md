@@ -3,7 +3,7 @@
 ```
 docker-machine create -d lightsail machine_name
 ```
-### Option
+### Options
 - Docker engine port: default is 2376
 ```
 --lightsail-engine-port
