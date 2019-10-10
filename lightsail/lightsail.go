@@ -47,6 +47,8 @@ const (
 	defaultBundleId             =   "small_2_0"
 )
 var (
+	dockerPort  int64   = 2376
+	swarmPort   int64   = 3376
 	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
 	errorZoneNameUnavailable = errors.New("Current zone is not available, please choose an another zone ")
 )
@@ -315,11 +317,9 @@ func (d *Driver) openPortsInLightsailInstance() error {
 	log.Infof("Opening port in lightsail instance...")
 	var openInstancePublicPorts lightsail.OpenInstancePublicPortsInput
 	openInstancePublicPorts.SetInstanceName(d.MachineName)
-	var fromPort int64 = 2376
-	var toPort int64 = 2376
 	var portInfo lightsail.PortInfo
-	portInfo.SetFromPort(fromPort)
-	portInfo.SetToPort(toPort)
+	portInfo.SetFromPort(dockerPort)
+	portInfo.SetToPort(dockerPort)
 	protocol := "tcp" // tcp, udp, all
 	portInfo.SetProtocol(protocol)
 	openInstancePublicPorts.SetPortInfo(&portInfo)
