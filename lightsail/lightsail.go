@@ -49,6 +49,7 @@ const (
 )
 var (
 	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
+	errorZoneNameUnavailable = errors.New("Current zone is not available, please choose an another zone ")
 )
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
@@ -184,9 +185,26 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	//if d.IPAddress == "" {
 	//	return errors.New("lightsail driver requires the --lightsail-ip-address option")
 	//}
-	_, err := d.awsCredentialsFactory().Credentials().Get()
-	if err != nil {
+	if _, err := d.awsCredentialsFactory().Credentials().Get();err != nil {
 		return errorMissingCredentials
+	}
+	// Check lightsail-region and lightsail-availability-zone input
+	var regionsInput lightsail.GetRegionsInput
+	regionsInput.SetIncludeAvailabilityZones(true)
+	regionsOutput, err := d.getClient().GetRegions(&regionsInput)
+	if err != nil {
+		return err
+	}
+	var regionZonePass bool = false
+	for _, v1 := range regionsOutput.Regions {
+		for _, v2 := range v1.AvailabilityZones {
+			if fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone) == *v2.ZoneName && "available" == *v2.State {
+				regionZonePass = true
+			}
+		}
+	}
+	if regionZonePass == false {
+		return errorZoneNameUnavailable
 	}
 	return nil
 }
