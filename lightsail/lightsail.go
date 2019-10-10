@@ -51,6 +51,7 @@ var (
 	swarmPort   int64   = 3376
 	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
 	errorZoneNameUnavailable = errors.New("Current zone is not available, please choose an another zone ")
+	errorBundleIdIsUnavailable = errors.New("Your bundleId is unactive or wrong, please check the --lightsail-bundle-id")
 )
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
@@ -191,6 +192,21 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	if regionZonePass == false {
 		return errorZoneNameUnavailable
 	}
+	// Check the valid of lightsail-bundle-id
+	bundlesOutput, err := d.getClient().GetBundles(&lightsail.GetBundlesInput{})
+	if err != nil {
+		return err
+	}
+	var bundleIdPass bool = false
+	for _, v := range bundlesOutput.Bundles {
+		if d.BundleId == *v.BundleId && true == *v.IsActive {
+			bundleIdPass = true
+		}
+	}
+	if bundleIdPass == false {
+		return errorBundleIdIsUnavailable
+	}
+	fmt.Println(bundlesOutput)
 	return nil
 }
 
