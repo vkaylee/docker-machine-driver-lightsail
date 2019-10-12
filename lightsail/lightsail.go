@@ -291,7 +291,7 @@ func (d *Driver) importKeyPairToLightsail() error {
 }
 func (d *Driver) processSSHKey() error {
 	if d.SSHPrivateKey == "" {
-		d.SSHKeyPath = d.GetSSHKeyPath() + "_" + d.MachineName
+		d.SSHKeyPath = d.GetSSHKeyPath()
 		log.Info("No SSH key specified. Creating new SSH Key")
 		if err := ssh.GenerateSSHKey(d.SSHKeyPath); err != nil {
 			return err
@@ -357,7 +357,7 @@ func (d *Driver) openPortsInLightsailInstance() error {
 	return err
 }
 func (d *Driver) createInstances() error {
-	log.Infof("Launching lightsail instances...")
+	log.Infof("Launching lightsail instance...")
 	availabilityZone := fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone)
 	instanceName := d.MachineName
 	var instanceNames []*string
