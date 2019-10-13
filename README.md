@@ -1,4 +1,5 @@
 # docker-machine-driver-lightsail
+https://www.terraform.io/docs/providers/aws/r/lightsail_instance.html
 ## Let's start
 ```
 docker-machine create -d lightsail machine_name
