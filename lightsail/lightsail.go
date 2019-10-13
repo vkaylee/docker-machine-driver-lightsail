@@ -49,7 +49,7 @@ const (
 var (
 	dockerPort  int64   = 2376
 	swarmPort   int64   = 3376
-	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --lightsail-access-key and --lightsail-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
+	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --aws-access-key and --aws-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
 	errorZoneNameUnavailable = errors.New("Current zone is not available, please choose an another zone ")
 	errorBundleIdIsUnavailable = errors.New("Your bundleId is unactive or wrong, please check the --lightsail-bundle-id")
 	errorBlueprintIsUnavailable = errors.New("Your blueprintId is unactive or wrong, please check the --lightsail-blueprint-id")
@@ -61,12 +61,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:   "aws-access-key",
 			Usage:  "AWS Access Key",
-			EnvVar: "AWS_ACCESS_KEY_ID",
+			EnvVar: "AWS_ACCESS_KEY",
 		},
 		mcnflag.StringFlag{
 			Name:   "aws-secret-key",
 			Usage:  "AWS Secret Key",
-			EnvVar: "AWS_SECRET_ACCESS_KEY",
+			EnvVar: "AWS_SECRET_KEY",
 		},
 		mcnflag.StringFlag{
 			Name:   "lightsail-ssh-key",
@@ -112,6 +112,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	if _, err := d.awsCredentialsFactory().Credentials().Get();err != nil {
 		return errorMissingCredentials
 	}
+	// Set SSH port
+	d.SSHPort = drivers.DefaultSSHPort
 	// Check lightsail-region and lightsail-availability-zone input
 	var regionsInput lightsail.GetRegionsInput
 	regionsInput.SetIncludeAvailabilityZones(true)
