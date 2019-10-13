@@ -112,7 +112,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	}
 }
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
-	d.EnginePort = flags.Int("lightsail-engine-port")
 	d.SSHPrivateKey = flags.String("lightsail-ssh-key")
 	d.SSHPort = flags.Int("lightsail-ssh-port")
 	d.AccessKey = flags.String("lightsail-access-key")
