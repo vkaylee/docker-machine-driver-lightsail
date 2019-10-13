@@ -114,10 +114,13 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	}
 	// Set SSH port
 	d.SSHPort = drivers.DefaultSSHPort
+	// Set KeyPairName
+	d.KeyPairName = "docker_machine_" + d.MachineName
 	// Check lightsail-region and lightsail-availability-zone input
-	var regionsInput lightsail.GetRegionsInput
-	regionsInput.SetIncludeAvailabilityZones(true)
-	regionsOutput, err := d.getClient().GetRegions(&regionsInput)
+	includeAvailabilityZones := true
+	regionsOutput, err := d.getClient().GetRegions(&lightsail.GetRegionsInput{
+		IncludeAvailabilityZones:   &includeAvailabilityZones,
+	})
 	if err != nil {
 		return err
 	}
@@ -210,7 +213,7 @@ func (d *Driver) PreCreateCheck() error {
 		if _, err := os.Stat(d.SSHPrivateKey); os.IsNotExist(err) {
 			return fmt.Errorf("SSH key does not exist: %q", d.SSHPrivateKey)
 		}
-		// TODO: validate the key is a valid key
+		log.Infof("The private key is ok")
 	}
 	return nil
 }
@@ -224,7 +227,6 @@ func (d *Driver) Create() error {
 	if err := d.importKeyPairToLightsail(); err != nil {
 		return err
 	}
-	log.Debugf("IP: %s", d.IPAddress)
 	if err := d.innerCreate();err != nil {
 		// cleanup partially created resources
 		d.Remove()
@@ -233,27 +235,14 @@ func (d *Driver) Create() error {
 	return nil
 }
 func (d *Driver) importKeyPairToLightsail() error {
-	// Set KeyPairName
-	d.KeyPairName = "docker_machine_" + d.MachineName
 	// Check KeyPairName in lightsail
-	var keyPairInput lightsail.GetKeyPairInput
-	keyPairInput.SetKeyPairName(d.KeyPairName)
-	currentKeyPair, err := d.getClient().GetKeyPair(&keyPairInput)
-	var removeKeyPairBool bool = true
-	if err != nil {
+	if _, err := d.getLightsailKeyPairInfo(); err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() == lightsail.ErrCodeNotFoundException {
-				removeKeyPairBool = false
-			} else {
-				return err
-			}
-		}
-	}
-	if removeKeyPairBool == true {
-		if *currentKeyPair.KeyPair.Name == d.KeyPairName && *currentKeyPair.KeyPair.Location.RegionName == d.Region {
-			// Remove lightsail keypair
-			if err := d.removeLightsailKeyPair(&d.KeyPairName); err != nil {
-				return err
+			if awsErr.Code() != lightsail.ErrCodeNotFoundException {
+				// Remove lightsail keypair
+				if err := d.removeLightsailKeyPair(); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -262,10 +251,11 @@ func (d *Driver) importKeyPairToLightsail() error {
 	if err != nil {
 		return err
 	}
-	var input lightsail.ImportKeyPairInput
-	input.SetKeyPairName(d.KeyPairName)
-	input.SetPublicKeyBase64(string(publicKey))
-	if _, err := d.getClient().ImportKeyPair(&input);err != nil {
+	stringPublicKey := string(publicKey)
+	if _, err := d.getClient().ImportKeyPair(&lightsail.ImportKeyPairInput{
+		KeyPairName:    &d.KeyPairName,
+		PublicKeyBase64:    &stringPublicKey,
+	});err != nil {
 		return err
 	}
 	return nil
@@ -292,11 +282,11 @@ func (d *Driver) processSSHKey() error {
 }
 func (d *Driver) innerCreate() error {
 	// Create lightsail instance
-	if err := d.createInstances();err != nil {
+	if err := d.createInstance();err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			switch awsErr.Code() {
 			case lightsail.ErrCodeInvalidInputException:
-				fmt.Println("The instance existed!")
+				log.Infof("The instance existed!")
 				if _, err := d.getLightsailInstanceInfo();err != nil {
 					return err
 				}
@@ -326,31 +316,34 @@ func (d *Driver) innerCreate() error {
 }
 func (d *Driver) openPortsInLightsailInstance() error {
 	log.Infof("Opening port in lightsail instance...")
-	var openInstancePublicPorts lightsail.OpenInstancePublicPortsInput
-	openInstancePublicPorts.SetInstanceName(d.MachineName)
-	var portInfo lightsail.PortInfo
-	portInfo.SetFromPort(0)
-	portInfo.SetToPort(65535)
+	var fromPort,toPort int64 = 0,65535
 	protocol := "tcp" // tcp, udp, all
-	portInfo.SetProtocol(protocol)
-	openInstancePublicPorts.SetPortInfo(&portInfo)
-	_, err := d.getClient().OpenInstancePublicPorts(&openInstancePublicPorts)
+	_, err := d.getClient().OpenInstancePublicPorts(&lightsail.OpenInstancePublicPortsInput{
+		InstanceName:   &d.MachineName,
+		PortInfo:   &lightsail.PortInfo{
+			FromPort:   &fromPort,
+			ToPort: &toPort,
+			Protocol:   &protocol,
+		},
+	})
 	return err
 }
-func (d *Driver) createInstances() error {
+func (d *Driver) createInstance() error {
 	log.Infof("Launching lightsail instance...")
 	availabilityZone := fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone)
-	instanceName := d.MachineName
 	var instanceNames []*string
-	instanceNames = append(instanceNames, &instanceName)
-	var inputCreate lightsail.CreateInstancesInput
-	inputCreate.AvailabilityZone = &availabilityZone
-	inputCreate.SetBlueprintId(d.BlueprintId)
-	inputCreate.SetBundleId(d.BundleId)
-	inputCreate.SetInstanceNames(instanceNames)
-	inputCreate.SetKeyPairName(d.KeyPairName)
-	_, err := d.getClient().CreateInstances(&inputCreate)
-	return err
+	instanceNames = append(instanceNames, &d.MachineName)
+	if _, err := d.getClient().CreateInstances(&lightsail.CreateInstancesInput{
+		AvailabilityZone:   &availabilityZone,
+		InstanceNames:  instanceNames,
+		BlueprintId:    &d.BlueprintId,
+		BundleId:   &d.BundleId,
+		KeyPairName:    &d.KeyPairName,
+	});err != nil {
+		return err
+	}
+	log.Infof("The instance has been created")
+	return nil
 }
 func (d *Driver) checkLightsailInstanceIsRunning() bool {
 	// Call AWS SDK
@@ -372,19 +365,20 @@ func (d *Driver) waitForLightsailInstance() error {
 	return nil
 }
 func (d *Driver) getInstanceState() (*lightsail.GetInstanceStateOutput, error) {
-	instanceName := d.MachineName
-	var instanceInput lightsail.GetInstanceStateInput
-	instanceInput.SetInstanceName(instanceName)
-	result, err := d.getClient().GetInstanceState(&instanceInput)
-	return result, err
+	return d.getClient().GetInstanceState(&lightsail.GetInstanceStateInput{
+		InstanceName:   &d.MachineName,
+	})
 }
 func (d *Driver) getLightsailInstanceInfo() (*lightsail.GetInstanceOutput, error) {
 	log.Infof("Getting the info of lightsail instance...")
-	instanceName := d.MachineName
-	var instanceInput lightsail.GetInstanceInput
-	instanceInput.SetInstanceName(instanceName)
-	result, err := d.getClient().GetInstance(&instanceInput)
-	return result, err
+	return d.getClient().GetInstance(&lightsail.GetInstanceInput{
+		InstanceName:   &d.MachineName,
+	})
+}
+func (d *Driver) getLightsailKeyPairInfo() (*lightsail.GetKeyPairOutput, error) {
+	return d.getClient().GetKeyPair(&lightsail.GetKeyPairInput{
+		KeyPairName:    &d.KeyPairName,
+	})
 }
 func (d *Driver) GetURL() (string, error) {
 	if err := drivers.MustBeRunning(d); err != nil {
@@ -417,16 +411,16 @@ func (d *Driver) Start() error {
 }
 
 func (d *Driver) Stop() error {
-	var stopInstanceInput lightsail.StopInstanceInput
-	stopInstanceInput.SetInstanceName(d.MachineName)
-	_, err := d.getClient().StopInstance(&stopInstanceInput)
+	_, err := d.getClient().StopInstance(&lightsail.StopInstanceInput{
+		InstanceName:   &d.MachineName,
+	})
 	return err
 }
 
 func (d *Driver) Restart() error {
-	var rebootInstanceInput lightsail.RebootInstanceInput
-	rebootInstanceInput.SetInstanceName(d.MachineName)
-	_, err := d.getClient().RebootInstance(&rebootInstanceInput)
+	_, err := d.getClient().RebootInstance(&lightsail.RebootInstanceInput{
+		InstanceName:   &d.MachineName,
+	})
 	return err
 }
 
@@ -435,45 +429,69 @@ func (d *Driver) Kill() error {
 }
 
 func (d *Driver) Remove() error {
-	// Get info of current instance
-	currentInstance, err := d.getLightsailInstanceInfo();
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() == lightsail.ErrCodeNotFoundException {
-				return nil
+	for {
+		// Get info of current instance
+		if _, err := d.getLightsailInstanceInfo();err != nil {
+			if awsErr, ok := err.(awserr.Error); ok {
+				if awsErr.Code() == lightsail.ErrCodeNotFoundException {
+					break
+				}
 			}
 		}
-		return err
+		// Delete lightsail instance
+		if err := d.removeLightsailInstance(); err != nil {
+			return err
+		} else {
+			break
+		}
 	}
-	// Delete lightsail instance
-	if err := d.deleteLightsailInstance(); err != nil {
-		return err
-	}
-	d.KeyPairName = *currentInstance.Instance.SshKeyName
-	// Remove lightsail keypair
-	if err := d.removeLightsailKeyPair(&d.KeyPairName); err != nil {
-		return err
+	for {
+		// Get info of current key pair
+		if _, err := d.getLightsailKeyPairInfo(); err != nil {
+			if awsErr, ok := err.(awserr.Error); ok {
+				if awsErr.Code() == lightsail.ErrCodeNotFoundException {
+					break
+				}
+			}
+		}
+		// Remove lightsail keypair
+		if err := d.removeLightsailKeyPair(); err != nil {
+			return err
+		} else {
+			break
+		}
 	}
 	return nil
 }
-func (d *Driver) removeLightsailKeyPair(name *string) error {
-	var input lightsail.DeleteKeyPairInput
-	input.SetKeyPairName(*name)
-	_, err := d.getClient().DeleteKeyPair(&input)
-	if err != nil {
-		log.Infof("We got an error when deleting the lightsail key pair.")
-		return err
+func (d *Driver) removeLightsailKeyPair() error {
+	if d.KeyPairName != "" {
+		log.Infof("Removing the lightsail key pair...")
+		if _, err := d.getClient().DeleteKeyPair(&lightsail.DeleteKeyPairInput{
+			KeyPairName:    &d.KeyPairName,
+		});err != nil {
+			log.Infof("We got an error when deleting the lightsail key pair.")
+			return err
+		}
+		log.Infof("The lightsail key pair has been removed.")
+	} else {
+		return errors.New("KeyPairName is empty")
 	}
 	return nil
 }
-func (d *Driver) deleteLightsailInstance() error {
-	var input lightsail.DeleteInstanceInput
-	input.SetForceDeleteAddOns(true)
-	input.SetInstanceName(d.MachineName)
-	_, err := d.getClient().DeleteInstance(&input)
-	if err != nil {
-		log.Infof("We got an error when deleting the lightsail instance.")
-		return err
+func (d *Driver) removeLightsailInstance() error {
+	if d.MachineName != "" {
+		log.Infof("Removing the lightsail instance...")
+		forceDeleteAddOns := true
+		if _, err := d.getClient().DeleteInstance(&lightsail.DeleteInstanceInput{
+			ForceDeleteAddOns:  &forceDeleteAddOns,
+			InstanceName:   &d.MachineName,
+		});err != nil {
+			log.Infof("We got an error when deleting the lightsail instance.")
+			return err
+		}
+		log.Infof("The lightsail instance has been removed.")
+	} else {
+		return errors.New("KeyPairName is empty")
 	}
 	return nil
 }
