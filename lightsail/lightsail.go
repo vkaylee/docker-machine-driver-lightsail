@@ -348,8 +348,8 @@ func (d *Driver) openPortsInLightsailInstance() error {
 	var openInstancePublicPorts lightsail.OpenInstancePublicPortsInput
 	openInstancePublicPorts.SetInstanceName(d.MachineName)
 	var portInfo lightsail.PortInfo
-	portInfo.SetFromPort(dockerPort)
-	portInfo.SetToPort(dockerPort)
+	portInfo.SetFromPort(0)
+	portInfo.SetToPort(65535)
 	protocol := "tcp" // tcp, udp, all
 	portInfo.SetProtocol(protocol)
 	openInstancePublicPorts.SetPortInfo(&portInfo)
