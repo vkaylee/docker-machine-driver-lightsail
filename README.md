@@ -9,17 +9,13 @@ docker-machine create -d lightsail machine_name
 ```
 --lightsail-ssh-key
 ```
-- The SSH Port: default is 22
-```
---lightsail-ssh-port
-```
 - The AWS access key: default is AWS SDK config
 ```
---lightsail-access-key
+--lightsail-aws-access-key
 ```
 - The AWS secret key: default is AWS SDK config
 ```
---lightsail-secret-key
+--lightsail-aws-secret-key
 ```
 - The region: default is "ap-northeast-1"
 ```

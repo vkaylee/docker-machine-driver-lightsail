@@ -59,14 +59,14 @@ var (
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
 		mcnflag.StringFlag{
-			Name:   "aws-access-key",
-			Usage:  "AWS Access Key",
-			EnvVar: "AWS_ACCESS_KEY",
+			Name:   "lightsail-aws-access-key",
+			Usage:  "Lightsail AWS Access Key",
+			EnvVar: "LIGHTSAIL_AWS_ACCESS_KEY",
 		},
 		mcnflag.StringFlag{
-			Name:   "aws-secret-key",
-			Usage:  "AWS Secret Key",
-			EnvVar: "AWS_SECRET_KEY",
+			Name:   "lightsail-aws-secret-key",
+			Usage:  "Lightsail AWS Secret Key",
+			EnvVar: "LIGHTSAIL_AWS_SECRET_KEY",
 		},
 		mcnflag.StringFlag{
 			Name:   "lightsail-ssh-key",
@@ -102,8 +102,8 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 }
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHPrivateKey = flags.String("lightsail-ssh-key")
-	d.AwsAccessKey = flags.String("aws-access-key")
-	d.AwsSecretKey = flags.String("aws-secret-key")
+	d.AwsAccessKey = flags.String("lightsail-aws-access-key")
+	d.AwsSecretKey = flags.String("lightsail-aws-secret-key")
 	d.Region = flags.String("lightsail-region")
 	d.AvailabilityZone = flags.String("lightsail-availability-zone")
 	d.BlueprintId = flags.String("lightsail-blueprint-id")
