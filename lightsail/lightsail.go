@@ -74,12 +74,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  "",
 			EnvVar: "LIGHTSAIL_SSH_KEY",
 		},
-		mcnflag.IntFlag{
-			Name:   "lightsail-ssh-port",
-			Usage:  "SSH port",
-			Value:  drivers.DefaultSSHPort,
-			EnvVar: "LIGHTSAIL_SSH_PORT",
-		},
 		mcnflag.StringFlag{
 			Name:   "lightsail-region",
 			Usage:  "Lightsail Region",
@@ -108,7 +102,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 }
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHPrivateKey = flags.String("lightsail-ssh-key")
-	d.SSHPort = flags.Int("lightsail-ssh-port")
 	d.AccessKey = flags.String("lightsail-access-key")
 	d.SecretKey = flags.String("lightsail-secret-key")
 	d.Region = flags.String("lightsail-region")
