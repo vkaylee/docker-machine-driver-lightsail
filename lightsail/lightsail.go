@@ -69,11 +69,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			EnvVar: "AWS_SECRET_ACCESS_KEY",
 		},
 		mcnflag.StringFlag{
-			Name:   "lightsail-session-token",
-			Usage:  "AWS Session Token",
-			EnvVar: "AWS_SESSION_TOKEN",
-		},
-		mcnflag.StringFlag{
 			Name:   "lightsail-ssh-key",
 			Usage:  "SSH private key path (if not provided, default SSH key will be used)",
 			Value:  "",
