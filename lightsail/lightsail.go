@@ -30,8 +30,8 @@ type Driver struct {
 	EnginePort          int
 	SSHPrivateKey       string
 	KeyPairName         string
-	AccessKey           string
-	SecretKey           string
+	AwsAccess           string
+	AwsSecret           string
 	SessionToken        string
 	Region              string
 	BundleId            string
@@ -102,8 +102,8 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 }
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHPrivateKey = flags.String("lightsail-ssh-key")
-	d.AccessKey = flags.String("lightsail-access-key")
-	d.SecretKey = flags.String("lightsail-secret-key")
+	d.AwsAccess = flags.String("lightsail-access-key")
+	d.AwsSecret = flags.String("lightsail-secret-key")
 	d.Region = flags.String("lightsail-region")
 	d.AvailabilityZone = flags.String("lightsail-availability-zone")
 	d.BlueprintId = flags.String("lightsail-blueprint-id")
