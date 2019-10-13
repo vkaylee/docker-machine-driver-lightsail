@@ -73,12 +73,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "AWS Session Token",
 			EnvVar: "AWS_SESSION_TOKEN",
 		},
-		mcnflag.IntFlag{
-			Name:   "lightsail-engine-port",
-			Usage:  "Docker engine port",
-			Value:  engine.DefaultPort,
-			EnvVar: "LIGHTSAIL_ENGINE_PORT",
-		},
 		mcnflag.StringFlag{
 			Name:   "lightsail-ssh-key",
 			Usage:  "SSH private key path (if not provided, default SSH key will be used)",
@@ -117,56 +111,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		},
 	}
 }
-// NewDriver creates and returns a new instance of the driver
-func NewDriver(hostName, storePath string) drivers.Driver {
-	driver := &Driver{
-		EnginePort: engine.DefaultPort,
-		BaseDriver: &drivers.BaseDriver{
-			MachineName: hostName,
-			StorePath:   storePath,
-		},
-	}
-	driver.clientFactory = driver.buildClient
-	driver.awsCredentialsFactory = driver.buildCredentials
-	return driver
-}
-func (d *Driver) buildClient() *lightsail.Lightsail {
-	config := aws.NewConfig()
-	config = config.WithRegion(d.Region)
-	config = config.WithCredentials(d.awsCredentialsFactory().Credentials())
-	config = config.WithMaxRetries(3)
-	return lightsail.New(session.Must(session.NewSession(config)))
-}
-func (d *Driver) buildCredentials() awsCredentials {
-	return NewAWSCredentials(d.AccessKey, d.SecretKey, d.SessionToken)
-}
-func (d *Driver) getClient() *lightsail.Lightsail {
-	return d.clientFactory()
-}
-// DriverName returns the name of the driver
-func (d *Driver) DriverName() string {
-	return driverName
-}
-
-func (d *Driver) GetSSHHostname() (string, error) {
-	return d.GetIP()
-}
-
-func (d *Driver) GetSSHUsername() string {
-	return d.SSHUser
-}
-
-func (d *Driver) GetSSHPrivateKeyPath() string {
-	return d.SSHKeyPath
-}
-
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.EnginePort = flags.Int("lightsail-engine-port")
 	d.SSHPrivateKey = flags.String("lightsail-ssh-key")
 	d.SSHPort = flags.Int("lightsail-ssh-port")
 	d.AccessKey = flags.String("lightsail-access-key")
 	d.SecretKey = flags.String("lightsail-secret-key")
-	d.SessionToken = flags.String("lightsail-session-token")
 	d.Region = flags.String("lightsail-region")
 	d.AvailabilityZone = flags.String("lightsail-availability-zone")
 	d.BlueprintId = flags.String("lightsail-blueprint-id")
@@ -222,6 +172,48 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		return errorBlueprintIsUnavailable
 	}
 	return nil
+}
+// NewDriver creates and returns a new instance of the driver
+func NewDriver(hostName, storePath string) drivers.Driver {
+	driver := &Driver{
+		EnginePort: engine.DefaultPort,
+		BaseDriver: &drivers.BaseDriver{
+			MachineName: hostName,
+			StorePath:   storePath,
+		},
+	}
+	driver.clientFactory = driver.buildClient
+	driver.awsCredentialsFactory = driver.buildCredentials
+	return driver
+}
+func (d *Driver) buildClient() *lightsail.Lightsail {
+	config := aws.NewConfig()
+	config = config.WithRegion(d.Region)
+	config = config.WithCredentials(d.awsCredentialsFactory().Credentials())
+	config = config.WithMaxRetries(3)
+	return lightsail.New(session.Must(session.NewSession(config)))
+}
+func (d *Driver) buildCredentials() awsCredentials {
+	return NewAWSCredentials(d.AccessKey, d.SecretKey, d.SessionToken)
+}
+func (d *Driver) getClient() *lightsail.Lightsail {
+	return d.clientFactory()
+}
+// DriverName returns the name of the driver
+func (d *Driver) DriverName() string {
+	return driverName
+}
+
+func (d *Driver) GetSSHHostname() (string, error) {
+	return d.GetIP()
+}
+
+func (d *Driver) GetSSHUsername() string {
+	return d.SSHUser
+}
+
+func (d *Driver) GetSSHPrivateKeyPath() string {
+	return d.SSHKeyPath
 }
 
 func (d *Driver) PreCreateCheck() error {
