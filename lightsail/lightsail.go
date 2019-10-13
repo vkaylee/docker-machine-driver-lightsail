@@ -43,7 +43,7 @@ const (
 	driverName                  =   "lightsail"
 	defaultAvailabilityZone     =   "a"
 	defaultRegion               =   "ap-northeast-1"
-	defaultBlueprintId          =   "debian_9_5"
+	defaultBlueprintId          =   "ubuntu_18_04"
 	defaultBundleId             =   "small_2_0"
 )
 var (

@@ -28,7 +28,7 @@ docker-machine create -d lightsail machine_name
 ```
 --lightsail-availability-zone
 ```
-- The OS of your instance: default is "debian_9_5"
+- The OS of your instance: default is "ubuntu_18_04"
 ```
 --lightsail-blueprint-id
 ```
