@@ -1,4 +1,4 @@
-# docker-machine-driver-lightsail
+# Driver Amazon AWS Lightsail for docker-machine
 https://www.terraform.io/docs/providers/aws/r/lightsail_instance.html
 ## Let's start
 ```
