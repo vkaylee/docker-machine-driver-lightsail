@@ -1,6 +1,8 @@
 package lightsail
 
 import (
+	"crypto/md5"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
@@ -8,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/docker/machine/libmachine/ssh"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -27,6 +30,7 @@ type Driver struct {
 	*drivers.BaseDriver
 	clientFactory         func() *lightsail.Lightsail
 	awsCredentialsFactory func() awsCredentials
+	Id                  string
 	EnginePort          int
 	SSHPrivateKey       string
 	KeyPairName         string
@@ -37,6 +41,7 @@ type Driver struct {
 	BundleId            string
 	BlueprintId         string
 	AvailabilityZone    string
+	InstanceName        string
 }
 const (
 	defaultTimeout              =   15 * time.Second
@@ -112,10 +117,14 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	if _, err := d.awsCredentialsFactory().Credentials().Get();err != nil {
 		return errorMissingCredentials
 	}
+	// Set random Id
+	d.Id = generateId()
+	// Set InstanceName
+	d.InstanceName = fmt.Sprintf("docker_machine_%s_%s_%s", d.MachineName, d.BlueprintId, d.Id)
 	// Set SSH port
 	d.SSHPort = drivers.DefaultSSHPort
 	// Set KeyPairName
-	d.KeyPairName = "docker_machine_" + d.MachineName
+	d.KeyPairName = fmt.Sprintf("docker_machine_%s_%s_%s_%s", d.MachineName, d.BundleId, d.BlueprintId, d.Id)
 	// Check lightsail-region and lightsail-availability-zone input
 	includeAvailabilityZones := true
 	regionsOutput, err := d.getClient().GetRegions(&lightsail.GetRegionsInput{
@@ -319,7 +328,7 @@ func (d *Driver) openPortsInLightsailInstance() error {
 	var fromPort,toPort int64 = 0,65535
 	protocol := "tcp" // tcp, udp, all
 	_, err := d.getClient().OpenInstancePublicPorts(&lightsail.OpenInstancePublicPortsInput{
-		InstanceName:   &d.MachineName,
+		InstanceName:   &d.InstanceName,
 		PortInfo:   &lightsail.PortInfo{
 			FromPort:   &fromPort,
 			ToPort: &toPort,
@@ -332,7 +341,7 @@ func (d *Driver) createInstance() error {
 	log.Infof("Launching lightsail instance...")
 	availabilityZone := fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone)
 	var instanceNames []*string
-	instanceNames = append(instanceNames, &d.MachineName)
+	instanceNames = append(instanceNames, &d.InstanceName)
 	if _, err := d.getClient().CreateInstances(&lightsail.CreateInstancesInput{
 		AvailabilityZone:   &availabilityZone,
 		InstanceNames:  instanceNames,
@@ -359,20 +368,22 @@ func (d *Driver) checkLightsailInstanceIsRunning() bool {
 	return false
 }
 func (d *Driver) waitForLightsailInstance() error {
+	log.Infof("Waiting for the active lightsail instance...")
 	if err := mcnutils.WaitFor(d.checkLightsailInstanceIsRunning); err != nil {
 		return err
 	}
+	log.Infof("The lightsail instance is running...")
 	return nil
 }
 func (d *Driver) getInstanceState() (*lightsail.GetInstanceStateOutput, error) {
 	return d.getClient().GetInstanceState(&lightsail.GetInstanceStateInput{
-		InstanceName:   &d.MachineName,
+		InstanceName:   &d.InstanceName,
 	})
 }
 func (d *Driver) getLightsailInstanceInfo() (*lightsail.GetInstanceOutput, error) {
 	log.Infof("Getting the info of lightsail instance...")
 	return d.getClient().GetInstance(&lightsail.GetInstanceInput{
-		InstanceName:   &d.MachineName,
+		InstanceName:   &d.InstanceName,
 	})
 }
 func (d *Driver) getLightsailKeyPairInfo() (*lightsail.GetKeyPairOutput, error) {
@@ -402,7 +413,7 @@ func (d *Driver) GetState() (state.State, error) {
 
 func (d *Driver) Start() error {
 	var startInstanceInput lightsail.StartInstanceInput
-	startInstanceInput.SetInstanceName(d.MachineName)
+	startInstanceInput.SetInstanceName(d.InstanceName)
 	_, err := d.getClient().StartInstance(&startInstanceInput)
 	if err != nil {
 		return err
@@ -412,14 +423,14 @@ func (d *Driver) Start() error {
 
 func (d *Driver) Stop() error {
 	_, err := d.getClient().StopInstance(&lightsail.StopInstanceInput{
-		InstanceName:   &d.MachineName,
+		InstanceName:   &d.InstanceName,
 	})
 	return err
 }
 
 func (d *Driver) Restart() error {
 	_, err := d.getClient().RebootInstance(&lightsail.RebootInstanceInput{
-		InstanceName:   &d.MachineName,
+		InstanceName:   &d.InstanceName,
 	})
 	return err
 }
@@ -479,12 +490,12 @@ func (d *Driver) removeLightsailKeyPair() error {
 	return nil
 }
 func (d *Driver) removeLightsailInstance() error {
-	if d.MachineName != "" {
+	if d.InstanceName != "" {
 		log.Infof("Removing the lightsail instance...")
 		forceDeleteAddOns := true
 		if _, err := d.getClient().DeleteInstance(&lightsail.DeleteInstanceInput{
 			ForceDeleteAddOns:  &forceDeleteAddOns,
-			InstanceName:   &d.MachineName,
+			InstanceName:   &d.InstanceName,
 		});err != nil {
 			log.Infof("We got an error when deleting the lightsail instance.")
 			return err
@@ -509,4 +520,15 @@ func copySSHPrivateKey(src, dst string) error {
 }
 func (d *Driver) publicSSHKeyPath() string {
 	return d.SSHKeyPath + ".pub"
+}
+func generateId() string {
+	rb := make([]byte, 10)
+	_, err := rand.Read(rb)
+	if err != nil {
+		log.Warnf("Unable to generate id: %s", err)
+	}
+
+	h := md5.New()
+	io.WriteString(h, string(rb))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
