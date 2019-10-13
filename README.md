@@ -4,10 +4,6 @@
 docker-machine create -d lightsail machine_name
 ```
 ### Options
-- Docker engine port: default is 2376
-```
---lightsail-engine-port
-```
 - The path of your ssh key: default is the driver will generate the new SSH key.
 ```
 --lightsail-ssh-key
