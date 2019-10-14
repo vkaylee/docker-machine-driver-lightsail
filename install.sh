@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 if [ "$(command -v go)" ]; then
   mkdir release
+  echo "Build for MacOS"
   # build app for darwin amd64
   env GOOS=darwin GOARCH=amd64 go build
   # tar it
@@ -12,6 +13,7 @@ if [ "$(command -v go)" ]; then
   # Remove it
   rm docker-machine-driver-lightsail
 
+  echo "Build for Linux"
   # Build app for linux amd64
   env GOOS=linux GOARCH=amd64 go build
   # Tar it
@@ -19,13 +21,7 @@ if [ "$(command -v go)" ]; then
   # Remove it
   rm docker-machine-driver-lightsail
 
-  # Build app for windows amd64
-  env GOOS=windows GOARCH=amd64 go build
-  # Tar it
-  tar -cjf release/docker-machine-driver-lightsail-windows-amd64.tar docker-machine-driver-lightsail
-  # Remove it
-  rm docker-machine-driver-lightsail
-
+  echo "Build for OpenBSD"
   # Build app for openbsd amd64
   env GOOS=openbsd GOARCH=amd64 go build
   # Tar it
@@ -33,6 +29,7 @@ if [ "$(command -v go)" ]; then
   # Remove it
   rm docker-machine-driver-lightsail
 
+  echo "Build for FreeBSD"
   # Build app for freebsd amd64
   env GOOS=openbsd GOARCH=amd64 go build
   # Tar it
@@ -40,11 +37,5 @@ if [ "$(command -v go)" ]; then
   # Remove it
   rm docker-machine-driver-lightsail
 
-  # Build app for android arm
-  env GOOS=android GOARCH=arm go build
-  # Tar it
-  tar -cjf release/docker-machine-driver-lightsail-android-arm.tar docker-machine-driver-lightsail
-  # Remove it
-  rm docker-machine-driver-lightsail
 fi
 

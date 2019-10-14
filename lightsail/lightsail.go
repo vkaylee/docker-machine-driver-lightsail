@@ -30,35 +30,38 @@ type Driver struct {
 	*drivers.BaseDriver
 	clientFactory         func() *lightsail.Lightsail
 	awsCredentialsFactory func() awsCredentials
-	Id                  string
-	EnginePort          int
-	SSHPrivateKey       string
-	KeyPairName         string
-	AwsAccessKey        string
-	AwsSecretKey        string
-	AwsSessionToken     string
-	Region              string
-	BundleId            string
-	BlueprintId         string
-	AvailabilityZone    string
-	InstanceName        string
+	Id                    string
+	EnginePort            int
+	SSHPrivateKey         string
+	KeyPairName           string
+	AwsAccessKey          string
+	AwsSecretKey          string
+	AwsSessionToken       string
+	Region                string
+	BundleId              string
+	BlueprintId           string
+	AvailabilityZone      string
+	InstanceName          string
 }
+
 const (
-	defaultTimeout              =   15 * time.Second
-	driverName                  =   "lightsail"
-	defaultAvailabilityZone     =   "a"
-	defaultRegion               =   "ap-northeast-1"
-	defaultBlueprintId          =   "ubuntu_18_04"
-	defaultBundleId             =   "small_2_0"
+	defaultTimeout          = 15 * time.Second
+	driverName              = "lightsail"
+	defaultAvailabilityZone = "a"
+	defaultRegion           = "ap-northeast-1"
+	defaultBlueprintId      = "ubuntu_18_04"
+	defaultBundleId         = "small_2_0"
 )
+
 var (
-	dockerPort  int64   = 2376
-	swarmPort   int64   = 3376
-	errorMissingCredentials = errors.New("lightsail driver requires AWS credentials configured with the --aws-access-key and --aws-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
-	errorZoneNameUnavailable = errors.New("Current zone is not available, please choose an another zone ")
-	errorBundleIdIsUnavailable = errors.New("Your bundleId is unactive or wrong, please check the --lightsail-bundle-id")
-	errorBlueprintIsUnavailable = errors.New("Your blueprintId is unactive or wrong, please check the --lightsail-blueprint-id")
+	dockerPort                  int64 = 2376
+	swarmPort                   int64 = 3376
+	errorMissingCredentials           = errors.New("lightsail driver requires AWS credentials configured with the --aws-access-key and --aws-secret-key options, environment variables, ~/.aws/credentials, or an instance role")
+	errorZoneNameUnavailable          = errors.New("Current zone is not available, please choose an another zone ")
+	errorBundleIdIsUnavailable        = errors.New("Your bundleId is unactive or wrong, please check the --lightsail-bundle-id")
+	errorBlueprintIsUnavailable       = errors.New("Your blueprintId is unactive or wrong, please check the --lightsail-blueprint-id")
 )
+
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
@@ -114,7 +117,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.BlueprintId = flags.String("lightsail-blueprint-id")
 	d.BundleId = flags.String("lightsail-bundle-id")
 
-	if _, err := d.awsCredentialsFactory().Credentials().Get();err != nil {
+	if _, err := d.awsCredentialsFactory().Credentials().Get(); err != nil {
 		return errorMissingCredentials
 	}
 	// Set random Id
@@ -128,7 +131,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	// Check lightsail-region and lightsail-availability-zone input
 	includeAvailabilityZones := true
 	regionsOutput, err := d.getClient().GetRegions(&lightsail.GetRegionsInput{
-		IncludeAvailabilityZones:   &includeAvailabilityZones,
+		IncludeAvailabilityZones: &includeAvailabilityZones,
 	})
 	if err != nil {
 		return err
@@ -174,6 +177,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	}
 	return nil
 }
+
 // NewDriver creates and returns a new instance of the driver
 func NewDriver(hostName, storePath string) drivers.Driver {
 	driver := &Driver{
@@ -200,6 +204,7 @@ func (d *Driver) buildCredentials() awsCredentials {
 func (d *Driver) getClient() *lightsail.Lightsail {
 	return d.clientFactory()
 }
+
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
 	return driverName
@@ -236,7 +241,7 @@ func (d *Driver) Create() error {
 	if err := d.importKeyPairToLightsail(); err != nil {
 		return err
 	}
-	if err := d.innerCreate();err != nil {
+	if err := d.innerCreate(); err != nil {
 		// cleanup partially created resources
 		d.Remove()
 		return err
@@ -262,9 +267,9 @@ func (d *Driver) importKeyPairToLightsail() error {
 	}
 	stringPublicKey := string(publicKey)
 	if _, err := d.getClient().ImportKeyPair(&lightsail.ImportKeyPairInput{
-		KeyPairName:    &d.KeyPairName,
-		PublicKeyBase64:    &stringPublicKey,
-	});err != nil {
+		KeyPairName:     &d.KeyPairName,
+		PublicKeyBase64: &stringPublicKey,
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -291,12 +296,12 @@ func (d *Driver) processSSHKey() error {
 }
 func (d *Driver) innerCreate() error {
 	// Create lightsail instance
-	if err := d.createInstance();err != nil {
+	if err := d.createInstance(); err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			switch awsErr.Code() {
 			case lightsail.ErrCodeInvalidInputException:
 				log.Infof("The instance existed!")
-				if _, err := d.getLightsailInstanceInfo();err != nil {
+				if _, err := d.getLightsailInstanceInfo(); err != nil {
 					return err
 				}
 				return nil
@@ -325,14 +330,14 @@ func (d *Driver) innerCreate() error {
 }
 func (d *Driver) openPortsInLightsailInstance() error {
 	log.Infof("Opening port in lightsail instance...")
-	var fromPort,toPort int64 = 0,65535
+	var fromPort, toPort int64 = 0, 65535
 	protocol := "tcp" // tcp, udp, all
 	_, err := d.getClient().OpenInstancePublicPorts(&lightsail.OpenInstancePublicPortsInput{
-		InstanceName:   &d.InstanceName,
-		PortInfo:   &lightsail.PortInfo{
-			FromPort:   &fromPort,
-			ToPort: &toPort,
-			Protocol:   &protocol,
+		InstanceName: &d.InstanceName,
+		PortInfo: &lightsail.PortInfo{
+			FromPort: &fromPort,
+			ToPort:   &toPort,
+			Protocol: &protocol,
 		},
 	})
 	return err
@@ -343,12 +348,12 @@ func (d *Driver) createInstance() error {
 	var instanceNames []*string
 	instanceNames = append(instanceNames, &d.InstanceName)
 	if _, err := d.getClient().CreateInstances(&lightsail.CreateInstancesInput{
-		AvailabilityZone:   &availabilityZone,
-		InstanceNames:  instanceNames,
-		BlueprintId:    &d.BlueprintId,
-		BundleId:   &d.BundleId,
-		KeyPairName:    &d.KeyPairName,
-	});err != nil {
+		AvailabilityZone: &availabilityZone,
+		InstanceNames:    instanceNames,
+		BlueprintId:      &d.BlueprintId,
+		BundleId:         &d.BundleId,
+		KeyPairName:      &d.KeyPairName,
+	}); err != nil {
 		return err
 	}
 	log.Infof("The instance has been created")
@@ -377,18 +382,18 @@ func (d *Driver) waitForLightsailInstance() error {
 }
 func (d *Driver) getInstanceState() (*lightsail.GetInstanceStateOutput, error) {
 	return d.getClient().GetInstanceState(&lightsail.GetInstanceStateInput{
-		InstanceName:   &d.InstanceName,
+		InstanceName: &d.InstanceName,
 	})
 }
 func (d *Driver) getLightsailInstanceInfo() (*lightsail.GetInstanceOutput, error) {
 	log.Infof("Getting the info of lightsail instance...")
 	return d.getClient().GetInstance(&lightsail.GetInstanceInput{
-		InstanceName:   &d.InstanceName,
+		InstanceName: &d.InstanceName,
 	})
 }
 func (d *Driver) getLightsailKeyPairInfo() (*lightsail.GetKeyPairOutput, error) {
 	return d.getClient().GetKeyPair(&lightsail.GetKeyPairInput{
-		KeyPairName:    &d.KeyPairName,
+		KeyPairName: &d.KeyPairName,
 	})
 }
 func (d *Driver) GetURL() (string, error) {
@@ -423,14 +428,14 @@ func (d *Driver) Start() error {
 
 func (d *Driver) Stop() error {
 	_, err := d.getClient().StopInstance(&lightsail.StopInstanceInput{
-		InstanceName:   &d.InstanceName,
+		InstanceName: &d.InstanceName,
 	})
 	return err
 }
 
 func (d *Driver) Restart() error {
 	_, err := d.getClient().RebootInstance(&lightsail.RebootInstanceInput{
-		InstanceName:   &d.InstanceName,
+		InstanceName: &d.InstanceName,
 	})
 	return err
 }
@@ -442,7 +447,7 @@ func (d *Driver) Kill() error {
 func (d *Driver) Remove() error {
 	for {
 		// Get info of current instance
-		if _, err := d.getLightsailInstanceInfo();err != nil {
+		if _, err := d.getLightsailInstanceInfo(); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok {
 				if awsErr.Code() == lightsail.ErrCodeNotFoundException {
 					break
@@ -478,8 +483,8 @@ func (d *Driver) removeLightsailKeyPair() error {
 	if d.KeyPairName != "" {
 		log.Infof("Removing the lightsail key pair...")
 		if _, err := d.getClient().DeleteKeyPair(&lightsail.DeleteKeyPairInput{
-			KeyPairName:    &d.KeyPairName,
-		});err != nil {
+			KeyPairName: &d.KeyPairName,
+		}); err != nil {
 			log.Infof("We got an error when deleting the lightsail key pair.")
 			return err
 		}
@@ -494,9 +499,9 @@ func (d *Driver) removeLightsailInstance() error {
 		log.Infof("Removing the lightsail instance...")
 		forceDeleteAddOns := true
 		if _, err := d.getClient().DeleteInstance(&lightsail.DeleteInstanceInput{
-			ForceDeleteAddOns:  &forceDeleteAddOns,
-			InstanceName:   &d.InstanceName,
-		});err != nil {
+			ForceDeleteAddOns: &forceDeleteAddOns,
+			InstanceName:      &d.InstanceName,
+		}); err != nil {
 			log.Infof("We got an error when deleting the lightsail instance.")
 			return err
 		}
