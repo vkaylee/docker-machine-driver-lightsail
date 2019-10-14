@@ -18,5 +18,33 @@ if [ "$(command -v go)" ]; then
   tar -cjf release/docker-machine-driver-lightsail-linux-amd64.tar docker-machine-driver-lightsail
   # Remove it
   rm docker-machine-driver-lightsail
+
+  # Build app for windows amd64
+  env GOOS=windows GOARCH=amd64 go build
+  # Tar it
+  tar -cjf release/docker-machine-driver-lightsail-windows-amd64.tar docker-machine-driver-lightsail
+  # Remove it
+  rm docker-machine-driver-lightsail
+
+  # Build app for openbsd amd64
+  env GOOS=openbsd GOARCH=amd64 go build
+  # Tar it
+  tar -cjf release/docker-machine-driver-lightsail-openbsd-amd64.tar docker-machine-driver-lightsail
+  # Remove it
+  rm docker-machine-driver-lightsail
+
+  # Build app for freebsd amd64
+  env GOOS=openbsd GOARCH=amd64 go build
+  # Tar it
+  tar -cjf release/docker-machine-driver-lightsail-freebsd-amd64.tar docker-machine-driver-lightsail
+  # Remove it
+  rm docker-machine-driver-lightsail
+
+  # Build app for android arm
+  env GOOS=android GOARCH=arm go build
+  # Tar it
+  tar -cjf release/docker-machine-driver-lightsail-android-arm.tar docker-machine-driver-lightsail
+  # Remove it
+  rm docker-machine-driver-lightsail
 fi
 
