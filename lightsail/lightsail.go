@@ -423,7 +423,19 @@ func (d *Driver) Start() error {
 	if err != nil {
 		return err
 	}
-	return d.waitForLightsailInstance()
+	if err:= d.waitForLightsailInstance(); err != nil {
+		return err
+	}
+	// Get the info of instance
+	if result, err := d.getLightsailInstanceInfo();err != nil {
+		return err
+	} else {
+		// Set SSHUser
+		d.SSHUser = *result.Instance.Username
+		// Set IPAddress
+		d.IPAddress = *result.Instance.PublicIpAddress
+	}
+	return nil
 }
 
 func (d *Driver) Stop() error {
