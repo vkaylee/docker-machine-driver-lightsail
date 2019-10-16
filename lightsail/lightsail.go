@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -42,6 +43,7 @@ type Driver struct {
 	BlueprintId           string
 	AvailabilityZone      string
 	InstanceName          string
+	InstanceNamePrefix    string
 }
 
 const (
@@ -106,6 +108,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  defaultBundleId,
 			EnvVar: "LIGHTSAIL_BUNDLE_ID",
 		},
+		mcnflag.StringFlag{
+			Name:   "lightsail-instance-prefix",
+			Usage:  "Lightsail Instance Prefix (if not provided, default \"machine_\" will be used)",
+			Value:  "",
+			EnvVar: "LIGHTSAIL_INSTANCE_PREFIX",
+		},
 	}
 }
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
@@ -116,6 +124,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.AvailabilityZone = flags.String("lightsail-availability-zone")
 	d.BlueprintId = flags.String("lightsail-blueprint-id")
 	d.BundleId = flags.String("lightsail-bundle-id")
+	d.InstanceNamePrefix = flags.String("lightsail-instance-prefix")
 
 	if _, err := d.awsCredentialsFactory().Credentials().Get(); err != nil {
 		return errorMissingCredentials
@@ -123,58 +132,14 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	// Set random Id
 	d.Id = generateId()
 	// Set InstanceName
-	d.InstanceName = fmt.Sprintf("docker_machine_%s_%s_%s", d.MachineName, d.BlueprintId, d.Id)
+	if d.InstanceNamePrefix == "" {
+		d.InstanceNamePrefix = "machine_"
+	}
+	d.InstanceName = fmt.Sprintf("%s%s_%s_%s", d.InstanceNamePrefix, d.MachineName, d.BlueprintId, d.Id)
 	// Set SSH port
 	d.SSHPort = drivers.DefaultSSHPort
 	// Set KeyPairName
-	d.KeyPairName = fmt.Sprintf("docker_machine_%s_%s_%s_%s", d.MachineName, d.BundleId, d.BlueprintId, d.Id)
-	// Check lightsail-region and lightsail-availability-zone input
-	includeAvailabilityZones := true
-	regionsOutput, err := d.getClient().GetRegions(&lightsail.GetRegionsInput{
-		IncludeAvailabilityZones: &includeAvailabilityZones,
-	})
-	if err != nil {
-		return err
-	}
-	var regionZonePass bool = false
-	for _, v1 := range regionsOutput.Regions {
-		for _, v2 := range v1.AvailabilityZones {
-			if fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone) == *v2.ZoneName && "available" == *v2.State {
-				regionZonePass = true
-			}
-		}
-	}
-	if regionZonePass == false {
-		return errorZoneNameUnavailable
-	}
-	// Check the valid of lightsail-bundle-id
-	bundlesOutput, err := d.getClient().GetBundles(&lightsail.GetBundlesInput{})
-	if err != nil {
-		return err
-	}
-	var bundleIdPass bool = false
-	for _, v := range bundlesOutput.Bundles {
-		if d.BundleId == *v.BundleId && true == *v.IsActive {
-			bundleIdPass = true
-		}
-	}
-	if bundleIdPass == false {
-		return errorBundleIdIsUnavailable
-	}
-	// Check the valid of lightsail-blueprint-id
-	blueprintsOutput, err := d.getClient().GetBlueprints(&lightsail.GetBlueprintsInput{})
-	if err != nil {
-		return err
-	}
-	var blueprintPass bool = false
-	for _, v := range blueprintsOutput.Blueprints {
-		if d.BlueprintId == *v.BlueprintId && true == *v.IsActive {
-			blueprintPass = true
-		}
-	}
-	if blueprintPass == false {
-		return errorBlueprintIsUnavailable
-	}
+	d.KeyPairName = fmt.Sprintf("%s%s_%s_%s_%s", d.InstanceNamePrefix, d.MachineName, d.BundleId, d.BlueprintId, d.Id)
 	return nil
 }
 
@@ -223,11 +188,63 @@ func (d *Driver) GetSSHPrivateKeyPath() string {
 }
 
 func (d *Driver) PreCreateCheck() error {
+	// make valid name first
+	if err := d.makeValidName(); err != nil {
+		return err
+	}
+
 	if d.SSHPrivateKey != "" {
 		if _, err := os.Stat(d.SSHPrivateKey); os.IsNotExist(err) {
 			return fmt.Errorf("SSH key does not exist: %q", d.SSHPrivateKey)
 		}
 		log.Infof("The private key is ok")
+	}
+	// Check lightsail-region and lightsail-availability-zone input
+	includeAvailabilityZones := true
+	regionsOutput, err := d.getClient().GetRegions(&lightsail.GetRegionsInput{
+		IncludeAvailabilityZones: &includeAvailabilityZones,
+	})
+	if err != nil {
+		return err
+	}
+	var regionZonePass bool = false
+	for _, v1 := range regionsOutput.Regions {
+		for _, v2 := range v1.AvailabilityZones {
+			if fmt.Sprintf("%s%s", d.Region, d.AvailabilityZone) == *v2.ZoneName && "available" == *v2.State {
+				regionZonePass = true
+			}
+		}
+	}
+	if regionZonePass == false {
+		return errorZoneNameUnavailable
+	}
+	// Check the valid of lightsail-bundle-id
+	bundlesOutput, err := d.getClient().GetBundles(&lightsail.GetBundlesInput{})
+	if err != nil {
+		return err
+	}
+	var bundleIdPass bool = false
+	for _, v := range bundlesOutput.Bundles {
+		if d.BundleId == *v.BundleId && true == *v.IsActive {
+			bundleIdPass = true
+		}
+	}
+	if bundleIdPass == false {
+		return errorBundleIdIsUnavailable
+	}
+	// Check the valid of lightsail-blueprint-id
+	blueprintsOutput, err := d.getClient().GetBlueprints(&lightsail.GetBlueprintsInput{})
+	if err != nil {
+		return err
+	}
+	var blueprintPass bool = false
+	for _, v := range blueprintsOutput.Blueprints {
+		if d.BlueprintId == *v.BlueprintId && true == *v.IsActive {
+			blueprintPass = true
+		}
+	}
+	if blueprintPass == false {
+		return errorBlueprintIsUnavailable
 	}
 	return nil
 }
@@ -548,4 +565,19 @@ func generateId() string {
 	h := md5.New()
 	io.WriteString(h, string(rb))
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+func (d *Driver) makeValidName() error {
+	names := [2]*string{
+		&d.InstanceName,
+		&d.KeyPairName,
+	}
+	for _, p := range names {
+		// Make a Regex to say we only want letters and numbers
+		reg, err := regexp.Compile("[^a-zA-Z0-9_]+")
+		if err != nil {
+			return err
+		}
+		*p = reg.ReplaceAllLiteralString(*p, "")
+	}
+	return nil
 }
