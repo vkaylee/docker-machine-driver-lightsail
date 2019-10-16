@@ -1,6 +1,7 @@
 # Driver Amazon AWS Lightsail for docker-machine
 https://www.terraform.io/docs/providers/aws/r/lightsail_instance.html
 ## Install
+Access release tab and download it.
 ### For MacOS (darwin)
 - untar it.
 - copy docker-machine-driver-lightsail to /usr/local/bin/
@@ -15,7 +16,7 @@ https://www.terraform.io/docs/providers/aws/r/lightsail_instance.html
 docker-machine create -d lightsail machine_name
 ```
 It will create a machine "machine_name" and a instance with a name like "machine_machine_name_ubuntu_18_04_7e9018ea03ed1668b5fdf6d3aeb43c6d"
-### Options
+## Options
 - The path of your ssh key: default is the driver will generate the new SSH key.
 ```
 --lightsail-ssh-key
@@ -48,3 +49,11 @@ It will create a machine "machine_name" and a instance with a name like "machine
 ```
 --lightsail-instance-prefix
 ```
+## For Rancher users
+Copy the link of the release.
+For examble:
+```
+https://github.com/vleedev/docker-machine-driver-lightsail/releases/download/1.1.0/docker-machine-driver-lightsail-linux-amd64.tar
+```
+Add to "Download URL" field of your "Add Node Driver" form.
+Keep blank for other fields.
