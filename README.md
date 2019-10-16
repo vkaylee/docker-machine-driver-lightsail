@@ -33,3 +33,7 @@ docker-machine create -d lightsail machine_name
 ```
 --lightsail-bundle-id
 ```
+- The prefix name of your instance: default is "machine_"
+```
+--lightsail-instance-prefix
+```
