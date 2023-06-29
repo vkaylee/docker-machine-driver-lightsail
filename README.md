@@ -1,4 +1,5 @@
 # Driver Amazon AWS Lightsail for docker-machine
+## The repo has been archived, Docker has ended active development and support for Docker Machine
 https://www.terraform.io/docs/providers/aws/r/lightsail_instance.html
 ## Install
 Access release tab and download it.
